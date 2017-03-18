@@ -3,7 +3,7 @@ from types import new_class
 
 import interfaces as ci
 
-from argument_schema import ArgumentSchemas
+from argument_schema import ArgumentSchemas as asc
 
 from voluptuous import Schema
 
@@ -18,32 +18,27 @@ IOSeq = namedtuple(
 Pipeline = namedtuple(
     'Pipeline',
     (
-        'inputs',
-        'outputs',
+        'inputs',       # Expected inputs, to be popped from stack
+        'outputs',      # Expected outputs, to be pushed onto stack
         'process',
     ),
 )
 
-# TODO: Combine inputs and outputs into a ioseqs field; needed to simpify overloaded inputs to actions
 TokenInitDef = namedtuple(
     'TokenInitDef',
     (
-        'name',         # Human-friendly token name
-        #'klass',        # Class to use to represent this token (data and interface)
+        'klass',        # Class to use to represent this token (data and interface)
         'keyword',      # Token keyword, used in JSON
         'arg_schema',   # Schema that argument needs to validate against
-        'inputs',       # Expected inputs, to be popped from stack
-        'outputs',      # Expected outputs, to be pushed onto stack
-        'ioseqs',
-        'interfaces',   # Interfaces token is to support
+        'pipelines',    # Definitions for combinations of inputs, outputs, and processors
     ),
 )
 
 TokenDef = namedtuple(
     'TokenDef',
     TokenInitDef._fields + (
-        'klass',        # Type for this token
-        'schema',       # Schema this token's dict representation
+        'name',         # Human-friendly token name, taken from klass
+        'schema',       # Schema of this token's dict representation, uses arg_schema
     ),
 )
 
@@ -52,525 +47,466 @@ TokenInitDefs = frozenset({
     #### Concrete Tokens #######################################################
 
     TokenInitDef(
-        name='Ingredient',
+        klass=ci.Ingredient,
         keyword='INGR',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=(),
-        outputs=('Ingredient',),
-        ioseqs=(
-            IOSeq(input_seq=(), output_seq=('Ingredient',),),
-        ),
-        interfaces=(
-            ci.Foodstuff,
-            ci.Measurable,
-            ci.Placable,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=(),
+                outputs=(ci.Ingredient,),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Tool',
+        klass=ci.Tool,
         keyword='TOOL',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=(),
-        outputs=('Tool',),
-        ioseqs=(
-            IOSeq(input_seq=(), output_seq=('Tool',),),
-        ),
-        interfaces=(
-            ci.Equipment,
-            ci.Placable,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=(),
+                outputs=(ci.Tool,),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Vessel',
+        klass=ci.Vessel,
         keyword='VESS',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=(),
-        outputs=('Vessel',),
-        ioseqs=(
-            IOSeq(input_seq=(), output_seq=('Vessel',),),
-        ),
-        interfaces=(
-            ci.Container,
-            ci.Placable,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=(),
+                outputs=(ci.Vessel,),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Appliance',
+        klass=ci.Appliance,
         keyword='APPL',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=(),
-        outputs=('Appliance',),
-        ioseqs=(
-            IOSeq(input_seq=(), output_seq=('Appliance',),),
-        ),
-        interfaces=(
-            ci.Container,
-            ci.Placable,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=(),
+                outputs=(ci.Appliance,),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Environment',
+        klass=ci.Environment,
         keyword='ENVR',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=(),
-        outputs=('Environment',),
-        ioseqs=(
-            IOSeq(input_seq=(), output_seq=('Environment',),),
-        ),
-        interfaces=(
-            ci.Equipment,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=(),
+                outputs=(ci.Environment,),
+                process=None,
+            ),
         ),
     ),
 
     #### Operational Tokens ####################################################
 
     TokenInitDef(
-        name='Verb',
+        klass=ci.Verb,
         keyword='VERB',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=('Has(Food)',),
-        outputs=('Has(Food)',),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Food)',), output_seq=('Has(Food)',),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Modifiable,
-            ci.Annotatable,
-            ci.Photoable,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Food)',),
+                outputs=('Has(Food)',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Add',
+        klass=ci.Add,
         keyword='ADDI',
-        arg_schema=ArgumentSchemas.NONE,
-        inputs=('Has(Food) | Has(Vessel)', 'Has(Food)',),
-        outputs=('Has(Food) | Has(Food) + Has(Vessel)',),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Food) | Has(Vessel)', 'Has(Food)',), output_seq=('Has(Food) | Has(Food) + Has(Vessel)',),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Modifiable,
-            ci.Annotatable,
-            ci.Photoable,
+        arg_schema=asc.NONE,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Food)', 'Has(Food)',),
+                outputs=('Has(Food',),
+                process=None,
+            ),
+            Pipeline(
+                inputs=('Has(Vessel)', 'Has(Food)',),
+                outputs=('Has(Food) + Has(Vessel)',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='AddTo',
+        klass=ci.AddTo,
         keyword='ADDT',
-        arg_schema=ArgumentSchemas.NONE,
-        inputs=('Has(Food)', 'Has(Food) | Has(Vessel)',),
-        outputs=('Has(Food) | Has(Food) + Has(Vessel)',),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Food)', 'Has(Food) | Has(Vessel)',), output_seq=('Has(Food) | Has(Food) + Has(Vessel)',),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Modifiable,
-            ci.Annotatable,
-            ci.Photoable,
+        arg_schema=asc.NONE,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Food)', 'Has(Food)',),
+                outputs=('Has(Food)',),
+                process=None,
+            ),
+            Pipeline(
+                inputs=('Has(Food)', 'Has(Vessel)',),
+                outputs=('Has(Food) + Has(Vessel)',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Move',
+        klass=ci.Move,
         keyword='MOVE',
-        arg_schema=ArgumentSchemas.NONE,
-        inputs=('Has(Food) + Has(Vessel)', 'Has(Food) | Has(Vessel)',),
-        outputs=('Vessel', 'Has(Food) | Has(Food) + Has(Vessel)',),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Food) + Has(Vessel)', 'Has(Food) | Has(Vessel)',), output_seq=('Vessel', 'Has(Food) | Has(Food) + Has(Vessel)',),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Modifiable,
-            ci.Annotatable,
-            ci.Photoable,
+        arg_schema=asc.NONE,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Food) + Has(Vessel)', 'Has(Food)',),
+                outputs=('Vessel', 'Has(Food)',),
+                process=None,
+            ),
+            Pipeline(
+                inputs=('Has(Food) + Has(Vessel)', 'Has(Vessel)',),
+                outputs=('Vessel', 'Has(Food) + Has(Vessel)',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='MoveFrom',
+        klass=ci.MoveFrom,
         keyword='MOVF',
-        arg_schema=ArgumentSchemas.NONE,
-        inputs=('Has(Food) | Has(Vessel)', 'Has(Food) + Has(Vessel)',),
-        outputs=('Vessel', 'Has(Food) | Has(Food) + Has(Vessel)',),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Food) | Has(Vessel)', 'Has(Food) + Has(Vessel)',), output_seq=('Vessel', 'Has(Food) | Has(Food) + Has(Vessel)',),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Modifiable,
-            ci.Annotatable,
-            ci.Photoable,
+        arg_schema=asc.NONE,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Food)', 'Has(Food) + Has(Vessel)',),
+                outputs=('Vessel', 'Has(Food)',),
+                process=None,
+            ),
+            Pipeline(
+                inputs=('Has(Vessel)', 'Has(Food) + Has(Vessel)',),
+                outputs=('Vessel', 'Has(Food) + Has(Vessel)',),
+                process=None,
+            ),
         ),
     ),
-    # Take, Leave, Push, Pull, Yield, Quash, Separate, Reserve, Divide
     TokenInitDef(
-        name='Divide',
+        klass=ci.Divide,
         keyword='DIVI',
-        arg_schema=ArgumentSchemas.NONE,
-        inputs=('Has(Food)',),
-        outputs=('Has(Food)', 'Food',),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Food)',), output_seq=('Has(Food)', 'Food',),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Photoable,
-            ci.Annotatable,
-            ci.Partitionable,
+        arg_schema=asc.NONE,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Food)',),
+                outputs=('Has(Food)', 'Food',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Reserve',
+        klass=ci.Reserve,
         keyword='RESV',
-        arg_schema=ArgumentSchemas.NONE,
-        inputs=('Has(Food)',),
-        outputs=('Has(Food)', 'Food',),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Food)',), output_seq=('Has(Food)', 'Food',),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Photoable,
-            ci.Annotatable,
-            ci.Partitionable,
+        arg_schema=asc.NONE,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Food)',),
+                outputs=('Has(Food)', 'Food',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Configure',
+        klass=ci.Configure,
         keyword='CONF',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=('Has(Appliance)',),
-        outputs=('Has(Appliance)',),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Appliance)',), output_seq=('Has(Appliance)',),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Modifiable,
-            ci.Annotatable,
-            ci.Photoable,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Appliance)',),
+                outputs=('Has(Appliance)',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Meld',
+        klass=ci.Meld,
         keyword='MELD',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=('Has(Vessel)', 'Tool',),
-        outputs=('Has(Vessel)',),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Vessel)', 'Tool',), output_seq=('Has(Vessel)',),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Modifiable,
-            ci.Annotatable,
-            ci.Photoable,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Vessel)', 'Tool',),
+                outputs=('Has(Vessel)',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Place',
+        klass=ci.Place,
         keyword='PLAC',
-        arg_schema=ArgumentSchemas.NONE,
-        inputs=('Has(Environment)', 'Placeable',),
-        outputs=('Process',),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Environment)', 'Placeable',), output_seq=('Process',),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Modifiable,
-            ci.Annotatable,
-            ci.Photoable,
+        arg_schema=asc.NONE,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Environment)', 'Placeable',),
+                outputs=('Process',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Remove',
+        klass=ci.Remove,
         keyword='RMVE',
-        arg_schema=ArgumentSchemas.NONE,
-        inputs=('Process',),
-        outputs=('Placeable',),
-        ioseqs=(
-            IOSeq(input_seq=('Process',), output_seq=('Placeable',),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Modifiable,
-            ci.Annotatable,
-            ci.Photoable,
+        arg_schema=asc.NONE,
+        pipelines=(
+            Pipeline(
+                inputs=('Process',),
+                outputs=('Placeable',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Bind',
+        klass=ci.Bind,
         keyword='BIND',
-        arg_schema=ArgumentSchemas.NONE,
-        inputs=('Has(Food)', 'Tool',),
-        outputs=('Has(Food) + Has(Tool)',),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Food)', 'Tool',), output_seq=('Has(Food) + Has(Tool)',),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Passthru,
+        arg_schema=asc.NONE,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Food)', 'Tool',),
+                outputs=('Has(Food) + Has(Tool)',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Discard',
+        klass=ci.Discard,
         keyword='DISC',
-        arg_schema=ArgumentSchemas.NONE,
-        inputs=('Has(Mixture)',),
-        outputs=(),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Mixture)',), output_seq=(),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Photoable,
+        arg_schema=asc.NONE,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Mixture)',),
+                outputs=(),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Empty',
+        klass=ci.Empty,
         keyword='EMPT',
-        arg_schema=ArgumentSchemas.NONE,
-        inputs=('Has(Mixture) + Has(Vessel)',),
-        outputs=('Vessel',),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Mixture) + Has(Vessel)',), output_seq=('Vessel',),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Photoable,
+        arg_schema=asc.NONE,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Mixture) + Has(Vessel)',),
+                outputs=('Vessel',),
+                process=None,
+            ),
         ),
     ),
     # TODO: How does this work with multiple Tools?
     # TODO: Maybe have this work on two Verbs as input?
     TokenInitDef(
-        name='Simultaneous',
+        klass=ci.Simultaneous,
         keyword='SIMU',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=('Has(Verb)',),
-        outputs=('Has(Verb)',),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Verb)',), output_seq=('Has(Verb)',),),
-        ),
-        interfaces=(
-            ci.Action,
-            ci.Passthru,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Verb)',),
+                outputs=('Has(Verb)',),
+                process=None,
+            ),
         ),
     ),
 
     #### Metadata Tokens #######################################################
 
     TokenInitDef(
-        name='Condition',
+        klass=ci.Condition,
         keyword='COND',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=('Has(Environment)',),
-        outputs=('Has(Environment)',),
-        ioseqs=(
-            IOSeq(input_seq=('Has(Environment)',), output_seq=('Has(Environment)',),),
-        ),
-        interfaces=(
-            ci.Meta,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=('Has(Environment)',),
+                outputs=('Has(Environment)',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Modifier',
+        klass=ci.Modifier,
         keyword='MODI',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=('Modifiable',),
-        outputs=('Modifiable',),
-        ioseqs=(
-            IOSeq(input_seq=('Modifiable',), output_seq=('Modifiable',),),
-        ),
-        interfaces=(
-            ci.Meta,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=('Modifiable',),
+                outputs=('Modifiable',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Annotation',
+        klass=ci.Annotation,
         keyword='ANNO',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=('Annotatable',),
-        outputs=('Annotatable',),
-        ioseqs=(
-            IOSeq(input_seq=('Annotatable',), output_seq=('Annotatable',),),
-        ),
-        interfaces=(
-            ci.Meta,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=('Annotatable',),
+                outputs=('Annotatable',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Photo',
+        klass=ci.Photo,
         keyword='PHOT',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=('Photoable',),
-        outputs=('Photoable',),
-        ioseqs=(
-            IOSeq(input_seq=('Photoable',), output_seq=('Photoable',),),
-        ),
-        interfaces=(
-            ci.Meta,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=('Photoable',),
+                outputs=('Photoable',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='LookupSet',
+        klass=ci.LookupSet,
         keyword='LSET',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=('Lookupable',),
-        outputs=('Lookupable',),
-        ioseqs=(
-            IOSeq(input_seq=('Lookupable',), output_seq=('Lookupable',),),
-        ),
-        interfaces=(
-            ci.Meta,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=('Lookupable',),
+                outputs=('Lookupable',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Fraction',
+        klass=ci.Fraction,
         keyword='FRAC',
-        arg_schema=ArgumentSchemas.FRACTION,
-        inputs=('Divisor',),
-        outputs=('Divisor',),
-        ioseqs=(
-            IOSeq(input_seq=('Divisor',), output_seq=('Divisor',),),
-        ),
-        interfaces=(
-            ci.Partition,
+        arg_schema=asc.FRACTION,
+        pipelines=(
+            Pipeline(
+                inputs=('Divisor',),
+                outputs=('Divisor',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Pseudoselect',
+        klass=ci.Pseudoselect,
         keyword='PSEU',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=('Divisor',),
-        outputs=('Divisor',),
-        ioseqs=(
-            IOSeq(input_seq=('Divisor',), output_seq=('Divisor',),),
-        ),
-        interfaces=(
-            ci.Partition,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=('Divisor',),
+                outputs=('Divisor',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='QuantityMass',
+        klass=ci.QuantityMass,
         keyword='QMAS',
-        arg_schema=ArgumentSchemas.QUANTITY_MASS,
-        inputs=('Quantifiable',),
-        outputs=('Quantifiable',),
-        ioseqs=(
-            IOSeq(input_seq=('Quantifiable',), output_seq=('Quantifiable',),),
-        ),
-        interfaces=(
-            ci.Quantity,
+        arg_schema=asc.QUANTITY_MASS,
+        pipelines=(
+            Pipeline(
+                inputs=('Quantifiable',),
+                outputs=('Quantifiable',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='QuantityVolume',
+        klass=ci.QuantityVolume,
         keyword='QVOL',
-        arg_schema=ArgumentSchemas.QUANTITY_VOLUME,
-        inputs=('Quantifiable',),
-        outputs=('Quantifiable',),
-        ioseqs=(
-            IOSeq(input_seq=('Quantifiable',), output_seq=('Quantifiable',),),
-        ),
-        interfaces=(
-            ci.Quantity,
+        arg_schema=asc.QUANTITY_VOLUME,
+        pipelines=(
+            Pipeline(
+                inputs=('Quantifiable',),
+                outputs=('Quantifiable',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='QuantityCount',
+        klass=ci.QuantityCount,
         keyword='QCNT',
-        arg_schema=ArgumentSchemas.QUANTITY_COUNT,
-        inputs=('Quantifiable',),
-        outputs=('Quantifiable',),
-        ioseqs=(
-            IOSeq(input_seq=('Quantifiable',), output_seq=('Quantifiable',),),
-        ),
-        interfaces=(
-            ci.Quantity,
+        arg_schema=asc.QUANTITY_COUNT,
+        pipelines=(
+            Pipeline(
+                inputs=('Quantifiable',),
+                outputs=('Quantifiable',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Time',
+        klass=ci.Time,
         keyword='TIME',
-        arg_schema=ArgumentSchemas.QUANTITY_TIME,
-        inputs=('Timable',),
-        outputs=('Timable',),
-        ioseqs=(
-            IOSeq(input_seq=('Timable',), output_seq=('Timable',),),
-        ),
-        interfaces=(
-            ci.Meta,
+        arg_schema=asc.QUANTITY_TIME,
+        pipelines=(
+            Pipeline(
+                inputs=('Timable',),
+                outputs=('Timable',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='VariantTag',
+        klass=ci.VariantTag,
         keyword='VTAG',
-        arg_schema=ArgumentSchemas.VARIANT_TAG_SET,
-        inputs=('Group',),
-        outputs=('Group',),
-        ioseqs=(
-            IOSeq(input_seq=('Group',), output_seq=('Group',),),
-        ),
-        interfaces=(
-            ci.Meta,
+        arg_schema=asc.VARIANT_TAG_SET,
+        pipelines=(
+            Pipeline(
+                inputs=('Group',),
+                outputs=('Group',),
+                process=None,
+            ),
         ),
     ),
 
     #### Control Flow Tokens ###################################################
 
     TokenInitDef(
-        name='Group',
+        klass=ci.Group,
         keyword='GRUP',
         arg_schema='tokenseq',
-        inputs=(),
-        outputs=('Group',),
-        ioseqs=(
-            IOSeq(input_seq=(), output_seq=('Group',),),
-        ),
-        interfaces=(
-            ci.ControlFlow,
+        pipelines=(
+            Pipeline(
+                inputs=(),
+                outputs=('Group',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Or',
+        klass=ci.Or,
         keyword='ORGR',
-        arg_schema=ArgumentSchemas.NONE,
-        inputs=('Alternatable', 'Group'),
-        outputs=('Alternatable'),
-        ioseqs=(
-            IOSeq(input_seq=('Alternatable', 'Group'), output_seq=('Alternatable'),),
-        ),
-        interfaces=(
-            ci.ControlFlow,
+        arg_schema=asc.NONE,
+        pipelines=(
+            Pipeline(
+                inputs=('Alternatable', 'Group'),
+                outputs=('Alternatable'),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='Repeat',
+        klass=ci.Repeat,
         keyword='REPT',
-        arg_schema=ArgumentSchemas.POS_INT,
-        inputs=('Group',),
-        outputs=('Repetition',),
-        ioseqs=(
-            IOSeq(input_seq=('Group',), output_seq=('Repetition',),),
-        ),
-        interfaces=(
-            ci.ControlFlow,
+        arg_schema=asc.POS_INT,
+        pipelines=(
+            Pipeline(
+                inputs=('Group',),
+                outputs=('Repetition',),
+                process=None,
+            ),
         ),
     ),
     TokenInitDef(
-        name='LookupGet',
+        klass=ci.LookupGet,
         keyword='LGET',
-        arg_schema=ArgumentSchemas.STRING,
-        inputs=(),
-        outputs=(),
-        ioseqs=(
-            IOSeq(input_seq=(), output_seq=(),),
-        ),
-        interfaces=(
-            ci.ControlFlow,
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=(),
+                outputs=(),
+                process=None,
+            ),
         ),
     ),
 
@@ -583,11 +519,7 @@ def klass__init__(self, value):
 TokenDefs = frozenset({
     TokenDef(
         **tid._asdict(),
-        klass=new_class(
-            tid.name,
-            bases=tid.interfaces,
-            exec_body=lambda ns: ns.update({'__init__': klass__init__}),
-        ),
+        name=tid.klass.__name__,
         schema=Schema({tid.keyword: tid.arg_schema}, required=True),
     ) for tid in TokenInitDefs
 })

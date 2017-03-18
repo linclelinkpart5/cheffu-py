@@ -36,8 +36,18 @@ class Concrete(
     ):
     pass
 
-class Foodstuff(
+class HasFood(
         Concrete,
+    ):
+    pass
+
+class HasContainer(
+        Concrete,
+    ):
+    pass
+
+class Foodstuff(
+        HasFood,
     ):
     pass
 
@@ -48,6 +58,7 @@ class Equipment(
 
 class Container(
         Equipment,
+        HasContainer,
     ):
     pass
 
