@@ -1,54 +1,5 @@
 from collections import namedtuple
 
-# Data Types
-
-def assert_string(obj):
-    assert isinstance(obj, str)
-
-    return obj
-
-def assert_partition(obj):
-    assert isinstance(obj, dict)
-
-    assert 'keep' in obj
-    assert isinstance(obj['keep'], int)
-    assert obj['keep'] > 0
-
-    assert 'pass' in obj
-    assert isinstance(obj['pass'], int)
-    assert obj['pass'] > 0
-
-    return obj
-
-def assert_quantity(obj):
-    assert isinstance(obj, dict)
-
-    assert 'base' in obj
-    assert isinstance(obj['base'], int)
-    assert obj['base'] > 0
-
-    obj['base_den'] = obj.get('base_den', 1)
-    assert isinstance(obj['base_den'], int)
-    assert obj['base_den'] > 0
-
-    obj['range'] = obj.get('range', 0)
-    assert isinstance(obj['range'], int)
-    assert obj['range'] >= 0
-
-    obj['range_den'] = obj.get('range_den', 1)
-    assert isinstance(obj['range_den'], int)
-    assert obj['range_den'] > 0
-
-    obj['less_ok'] = obj.get('less_ok', True)
-    assert isinstance(obj['less_ok'], bool)
-
-    obj['more_ok'] = obj.get('more_ok', True)
-    assert isinstance(obj['more_ok'], bool)
-
-    return obj
-
-# Interfaces
-
 class Token:
     pass
 
@@ -95,6 +46,16 @@ class Equipment(
     ):
     pass
 
+class Container(
+        Equipment,
+    ):
+    pass
+
+class Implement(
+        Equipment,
+    ):
+    pass
+
 class Action(
         Token,
     ):
@@ -131,7 +92,17 @@ class Measurable(
     ):
     pass
 
-# Concrete Tokens
+class Passthru(
+        Token,
+    ):
+    pass
+
+class ControlFlow(
+        Token,
+    ):
+    pass
+
+# Tokens
 
 class Ingredient(
         Foodstuff,
@@ -147,28 +118,21 @@ class Tool(
     pass
 
 class Vessel(
-        Equipment,
-        #Has_Volume,
-        #Has_Dimension,
-        #Contains_Foodstuff,
+        Container,
         Placable,
     ):
     pass
 
 class Appliance(
-        Tool,
-        Vessel,
+        Container,
         Placable,
     ):
     pass
 
 class Environment(
         Equipment,
-        #Contains_Placable,
     ):
     pass
-
-# Operational Tokens
 
 class Verb(
         Action,
@@ -218,7 +182,7 @@ class Divide(
     ):
     pass
 
-class Separate(
+class Reserve(
         Action,
         Photoable,
         Annotatable,
@@ -226,7 +190,66 @@ class Separate(
     ):
     pass
 
-# Meta Tokens
+class Configure(
+        Action,
+        Modifiable,
+        Annotatable,
+        Photoable,
+    ):
+    pass
+
+class Meld(
+        Action,
+        Modifiable,
+        Annotatable,
+        Photoable,
+    ):
+    pass
+
+class Place(
+        Action,
+        Modifiable,
+        Annotatable,
+        Photoable,
+    ):
+    pass
+
+class Remove(
+        Action,
+        Modifiable,
+        Annotatable,
+        Photoable,
+    ):
+    pass
+
+class Bind(
+        Action,
+        Passthru,
+    ):
+    pass
+
+class Discard(
+        Action,
+        Photoable,
+    ):
+    pass
+
+class Empty(
+        Action,
+        Photoable,
+    ):
+    pass
+
+class Simultaneous(
+        Action,
+        Passthru,
+    ):
+    pass
+
+class Condition(
+        Meta,
+    ):
+    pass
 
 class Modifier(
         Meta,
@@ -243,22 +266,17 @@ class Photo(
     ):
     pass
 
-class TagSet(
+class LookupSet(
         Meta,
-    ):
-    pass
-
-class Modifier(
-        Meta,
-    ):
-    pass
-
-class Pseudoselect(
-        Partition,
     ):
     pass
 
 class Fraction(
+        Partition,
+    ):
+    pass
+
+class Pseudoselect(
         Partition,
     ):
     pass
@@ -278,28 +296,32 @@ class QuantityCount(
     ):
     pass
 
-#### 'INGR',
-#### 'TOOL',
-#### 'VESS',
-#### 'APPL',
-#### 'ENVR',
-#### 'DIVI',
-#### 'SEPR',
-# 'CONF',
-# 'MELD',
-# 'PLAC',
-#### 'TRNS',
-# 'BIND',
-#### 'VERB',
-#### 'ADDI',
-# 'DISC',
-# 'EMPT',
-# 'PREC',
-#### 'MODI',
-#### 'ANNO',
-#### 'PHOT',
-#### 'TSET',
-# 'TGET',
-#### 'QMAS',
-#### 'QVOL',
-#### 'QCNT',
+class Time(
+        Meta,
+    ):
+    pass
+
+class VariantTag(
+        Meta,
+    ):
+    pass
+
+class Group(
+        ControlFlow,
+    ):
+    pass
+
+class Or(
+        ControlFlow,
+    ):
+    pass
+
+class Repeat(
+        ControlFlow,
+    ):
+    pass
+
+class LookupGet(
+        ControlFlow,
+    ):
+    pass
