@@ -115,8 +115,8 @@ TokenInitDefs = frozenset({
         arg_schema=asc.STRING,
         pipelines=(
             Pipeline(
-                inputs=('Has(Food)',),
-                outputs=('Has(Food)',),
+                inputs=(ci.HasFoodstuff,),
+                outputs=(ci.HasFoodstuff,),
                 process=None,
             ),
         ),
@@ -127,13 +127,13 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=('Has(Food)', 'Has(Food)',),
+                inputs=(ci.HasFoodstuff, ci.HasFoodstuff,),
                 outputs=('Has(Food',),
                 process=None,
             ),
             Pipeline(
-                inputs=('Has(Vessel)', 'Has(Food)',),
-                outputs=('Has(Food) + Has(Vessel)',),
+                inputs=('Has(Vessel)', ci.HasFoodstuff,),
+                outputs=('System',),
                 process=None,
             ),
         ),
@@ -144,13 +144,13 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=('Has(Food)', 'Has(Food)',),
-                outputs=('Has(Food)',),
+                inputs=(ci.HasFoodstuff, ci.HasFoodstuff,),
+                outputs=(ci.HasFoodstuff,),
                 process=None,
             ),
             Pipeline(
-                inputs=('Has(Food)', 'Has(Vessel)',),
-                outputs=('Has(Food) + Has(Vessel)',),
+                inputs=(ci.HasFoodstuff, 'Has(Vessel)',),
+                outputs=('System',),
                 process=None,
             ),
         ),
@@ -161,13 +161,13 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=('Has(Food) + Has(Vessel)', 'Has(Food)',),
-                outputs=('Vessel', 'Has(Food)',),
+                inputs=('System', ci.HasFoodstuff,),
+                outputs=('Vessel', ci.HasFoodstuff,),
                 process=None,
             ),
             Pipeline(
-                inputs=('Has(Food) + Has(Vessel)', 'Has(Vessel)',),
-                outputs=('Vessel', 'Has(Food) + Has(Vessel)',),
+                inputs=('System', 'Has(Vessel)',),
+                outputs=('Vessel', 'System',),
                 process=None,
             ),
         ),
@@ -178,13 +178,13 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=('Has(Food)', 'Has(Food) + Has(Vessel)',),
-                outputs=('Vessel', 'Has(Food)',),
+                inputs=(ci.HasFoodstuff, 'System',),
+                outputs=('Vessel', ci.HasFoodstuff,),
                 process=None,
             ),
             Pipeline(
-                inputs=('Has(Vessel)', 'Has(Food) + Has(Vessel)',),
-                outputs=('Vessel', 'Has(Food) + Has(Vessel)',),
+                inputs=('Has(Vessel)', 'System',),
+                outputs=('Vessel', 'System',),
                 process=None,
             ),
         ),
@@ -195,8 +195,8 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=('Has(Food)',),
-                outputs=('Has(Food)', 'Food',),
+                inputs=(ci.HasFoodstuff,),
+                outputs=(ci.HasFoodstuff, 'Food',),
                 process=None,
             ),
         ),
@@ -207,8 +207,8 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=('Has(Food)',),
-                outputs=('Has(Food)', 'Food',),
+                inputs=(ci.HasFoodstuff,),
+                outputs=(ci.HasFoodstuff, 'Food',),
                 process=None,
             ),
         ),
@@ -231,7 +231,7 @@ TokenInitDefs = frozenset({
         arg_schema=asc.STRING,
         pipelines=(
             Pipeline(
-                inputs=('Has(Vessel)', 'Tool',),
+                inputs=('Has(Vessel)', ci.Tool,),
                 outputs=('Has(Vessel)',),
                 process=None,
             ),
@@ -267,8 +267,8 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=('Has(Food)', 'Tool',),
-                outputs=('Has(Food) + Has(Tool)',),
+                inputs=(ci.HasFoodstuff, ci.Tool,),
+                outputs=(ci.HasFoodstuff,),
                 process=None,
             ),
         ),
