@@ -19,7 +19,7 @@ Pipeline = namedtuple(
     'Pipeline',
     (
         'inputs',       # Expected inputs, to be popped from stack
-        'outputs',      # Expected outputs, to be pushed onto stack
+        # 'outputs',      # Expected outputs, to be pushed onto stack
         'process',
     ),
 )
@@ -42,6 +42,9 @@ TokenDef = namedtuple(
     ),
 )
 
+def concrete_processor(cls):
+    return lambda arg, ins, stk: cls(arg)
+
 TokenInitDefs = frozenset({
 
     #### Concrete Tokens #######################################################
@@ -53,8 +56,8 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=(),
-                outputs=(ci.Ingredient,),
-                process=None,
+                # outputs=(ci.Ingredient,),
+                process=concrete_processor(ci.Ingredient),
             ),
         ),
     ),
@@ -65,8 +68,8 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=(),
-                outputs=(ci.Tool,),
-                process=None,
+                # outputs=(ci.Tool,),
+                process=lambda arg, ins, stk: concrete_processor(ci.Tool),
             ),
         ),
     ),
@@ -77,8 +80,8 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=(),
-                outputs=(ci.Vessel,),
-                process=None,
+                # outputs=(ci.Vessel,),
+                process=lambda arg, ins, stk: concrete_processor(ci.Vessel),
             ),
         ),
     ),
@@ -89,8 +92,8 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=(),
-                outputs=(ci.Appliance,),
-                process=None,
+                # outputs=(ci.Appliance,),
+                process=lambda arg, ins, stk: concrete_processor(ci.Appliance),
             ),
         ),
     ),
@@ -101,8 +104,8 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=(),
-                outputs=(ci.Environment,),
-                process=None,
+                # outputs=(ci.Environment,),
+                process=lambda arg, ins, stk: concrete_processor(ci.Environment),
             ),
         ),
     ),
@@ -115,8 +118,8 @@ TokenInitDefs = frozenset({
         arg_schema=asc.STRING,
         pipelines=(
             Pipeline(
-                inputs=(ci.HasFoodstuff,),
-                outputs=(ci.HasFoodstuff,),
+                inputs=(ci.Haz(ci.Foodstuff),),
+                # outputs=(ci.Haz(ci.Foodstuff),),
                 process=None,
             ),
         ),
@@ -127,13 +130,13 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=(ci.HasFoodstuff, ci.HasFoodstuff,),
-                outputs=('Has(Food',),
+                inputs=(ci.Haz(ci.Foodstuff), ci.Haz(ci.Foodstuff),),
+                # outputs=(ci.Haz(ci.Foodstuff),),
                 process=None,
             ),
             Pipeline(
-                inputs=('Has(Vessel)', ci.HasFoodstuff,),
-                outputs=('System',),
+                inputs=(ci.Haz(ci.Container), ci.Haz(ci.Foodstuff),),
+                # outputs=('System',),
                 process=None,
             ),
         ),
@@ -144,13 +147,13 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=(ci.HasFoodstuff, ci.HasFoodstuff,),
-                outputs=(ci.HasFoodstuff,),
+                inputs=(ci.Haz(ci.Foodstuff), ci.Haz(ci.Foodstuff),),
+                # outputs=(ci.Haz(ci.Foodstuff),),
                 process=None,
             ),
             Pipeline(
-                inputs=(ci.HasFoodstuff, 'Has(Vessel)',),
-                outputs=('System',),
+                inputs=(ci.Haz(ci.Foodstuff), ci.Haz(ci.Container),),
+                # outputs=('System',),
                 process=None,
             ),
         ),
@@ -161,13 +164,13 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=('System', ci.HasFoodstuff,),
-                outputs=('Vessel', ci.HasFoodstuff,),
+                inputs=('System', ci.Haz(ci.Foodstuff),),
+                # outputs=('Vessel', ci.Haz(ci.Foodstuff),),
                 process=None,
             ),
             Pipeline(
-                inputs=('System', 'Has(Vessel)',),
-                outputs=('Vessel', 'System',),
+                inputs=('System', ci.Haz(ci.Container),),
+                # outputs=('Vessel', 'System',),
                 process=None,
             ),
         ),
@@ -178,13 +181,13 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=(ci.HasFoodstuff, 'System',),
-                outputs=('Vessel', ci.HasFoodstuff,),
+                inputs=(ci.Haz(ci.Foodstuff), 'System',),
+                # outputs=('Vessel', ci.Haz(ci.Foodstuff),),
                 process=None,
             ),
             Pipeline(
-                inputs=('Has(Vessel)', 'System',),
-                outputs=('Vessel', 'System',),
+                inputs=(ci.Haz(ci.Container), 'System',),
+                # outputs=('Vessel', 'System',),
                 process=None,
             ),
         ),
@@ -195,8 +198,8 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=(ci.HasFoodstuff,),
-                outputs=(ci.HasFoodstuff, 'Food',),
+                inputs=(ci.Haz(ci.Foodstuff),),
+                # outputs=(ci.Haz(ci.Foodstuff), 'Food',),
                 process=None,
             ),
         ),
@@ -207,8 +210,8 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=(ci.HasFoodstuff,),
-                outputs=(ci.HasFoodstuff, 'Food',),
+                inputs=(ci.Haz(ci.Foodstuff),),
+                # outputs=(ci.Haz(ci.Foodstuff), 'Food',),
                 process=None,
             ),
         ),
@@ -220,7 +223,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Has(Appliance)',),
-                outputs=('Has(Appliance)',),
+                # outputs=('Has(Appliance)',),
                 process=None,
             ),
         ),
@@ -231,8 +234,8 @@ TokenInitDefs = frozenset({
         arg_schema=asc.STRING,
         pipelines=(
             Pipeline(
-                inputs=('Has(Vessel)', ci.Tool,),
-                outputs=('Has(Vessel)',),
+                inputs=(ci.Haz(ci.Container), ci.Tool,),
+                # outputs=(ci.Haz(ci.Container),),
                 process=None,
             ),
         ),
@@ -244,7 +247,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Has(Environment)', 'Placeable',),
-                outputs=('Process',),
+                # outputs=('Process',),
                 process=None,
             ),
         ),
@@ -256,7 +259,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Process',),
-                outputs=('Placeable',),
+                # outputs=('Placeable',),
                 process=None,
             ),
         ),
@@ -267,8 +270,8 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=(ci.HasFoodstuff, ci.Tool,),
-                outputs=(ci.HasFoodstuff,),
+                inputs=(ci.Haz(ci.Foodstuff), ci.Tool,),
+                # outputs=(ci.Haz(ci.Foodstuff),),
                 process=None,
             ),
         ),
@@ -280,7 +283,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Has(Mixture)',),
-                outputs=(),
+                # outputs=(),
                 process=None,
             ),
         ),
@@ -291,8 +294,8 @@ TokenInitDefs = frozenset({
         arg_schema=asc.NONE,
         pipelines=(
             Pipeline(
-                inputs=('Has(Mixture) + Has(Vessel)',),
-                outputs=('Vessel',),
+                inputs=('System',),
+                # outputs=('Vessel',),
                 process=None,
             ),
         ),
@@ -306,7 +309,19 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Has(Verb)',),
-                outputs=('Has(Verb)',),
+                # outputs=('Has(Verb)',),
+                process=None,
+            ),
+        ),
+    ),
+    TokenInitDef(
+        klass=ci.LookupGet,
+        keyword='LGET',
+        arg_schema=asc.STRING,
+        pipelines=(
+            Pipeline(
+                inputs=(),
+                # outputs=(),
                 process=None,
             ),
         ),
@@ -321,7 +336,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Has(Environment)',),
-                outputs=('Has(Environment)',),
+                # outputs=('Has(Environment)',),
                 process=None,
             ),
         ),
@@ -333,7 +348,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Modifiable',),
-                outputs=('Modifiable',),
+                # outputs=('Modifiable',),
                 process=None,
             ),
         ),
@@ -345,7 +360,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Annotatable',),
-                outputs=('Annotatable',),
+                # outputs=('Annotatable',),
                 process=None,
             ),
         ),
@@ -357,7 +372,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Photoable',),
-                outputs=('Photoable',),
+                # outputs=('Photoable',),
                 process=None,
             ),
         ),
@@ -369,7 +384,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Lookupable',),
-                outputs=('Lookupable',),
+                # outputs=('Lookupable',),
                 process=None,
             ),
         ),
@@ -381,7 +396,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Divisor',),
-                outputs=('Divisor',),
+                # outputs=('Divisor',),
                 process=None,
             ),
         ),
@@ -393,7 +408,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Divisor',),
-                outputs=('Divisor',),
+                # outputs=('Divisor',),
                 process=None,
             ),
         ),
@@ -405,7 +420,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Quantifiable',),
-                outputs=('Quantifiable',),
+                # outputs=('Quantifiable',),
                 process=None,
             ),
         ),
@@ -417,7 +432,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Quantifiable',),
-                outputs=('Quantifiable',),
+                # outputs=('Quantifiable',),
                 process=None,
             ),
         ),
@@ -429,7 +444,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Quantifiable',),
-                outputs=('Quantifiable',),
+                # outputs=('Quantifiable',),
                 process=None,
             ),
         ),
@@ -441,7 +456,22 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Timable',),
-                outputs=('Timable',),
+                # outputs=('Timable',),
+                process=None,
+            ),
+        ),
+    ),
+
+    #### Generative Tokens #####################################################
+
+    TokenInitDef(
+        klass=ci.Group,
+        keyword='GRUP',
+        arg_schema='tokenseq',
+        pipelines=(
+            Pipeline(
+                inputs=(),
+                # outputs=('Group',),
                 process=None,
             ),
         ),
@@ -453,22 +483,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Group',),
-                outputs=('Group',),
-                process=None,
-            ),
-        ),
-    ),
-
-    #### Control Flow Tokens ###################################################
-
-    TokenInitDef(
-        klass=ci.Group,
-        keyword='GRUP',
-        arg_schema='tokenseq',
-        pipelines=(
-            Pipeline(
-                inputs=(),
-                outputs=('Group',),
+                # outputs=('Group',),
                 process=None,
             ),
         ),
@@ -480,7 +495,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Alternatable', 'Group'),
-                outputs=('Alternatable'),
+                # outputs=('Alternatable'),
                 process=None,
             ),
         ),
@@ -492,19 +507,7 @@ TokenInitDefs = frozenset({
         pipelines=(
             Pipeline(
                 inputs=('Group',),
-                outputs=('Repetition',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.LookupGet,
-        keyword='LGET',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=(),
-                outputs=(),
+                # outputs=('Repetition',),
                 process=None,
             ),
         ),

@@ -1,4 +1,4 @@
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from types import new_class
 from inspect import getmro
 from itertools import takewhile
@@ -7,10 +7,24 @@ class Token:
     pass
 
 class Modifiable(Token,):
-    pass
+    def __init__(self):
+        self._modis = OrderedDict()
+
+    def add_modifier(self, modi):
+        self._modis[modi] = None
+
+    def get_modifiers(self):
+        return tuple(self._modis.keys())
 
 class Annotatable(Token,):
-    pass
+    def __init__(self):
+        self._annos = OrderedDict()
+
+    def add_annotation(self, anno):
+        self._annos[anno] = None
+
+    def get_annotation(self):
+        return tuple(self._annos.keys())
 
 class Photoable(Token,):
     pass
@@ -67,12 +81,6 @@ def Haz():
     return lambda cls: create_or_get_entry(cls)
 
 Haz = Haz()
-
-class HasFoodstuff(Concrete,):
-    pass
-
-class HasContainer(Concrete,):
-    pass
 
 class Action(Token,):
     pass
@@ -213,7 +221,7 @@ class LookupGet(ControlFlow,):
 
 # Internal Concretes
 
-class System(HasFoodstuff, HasContainer,):
+class System(Haz(Foodstuff), Haz(Container),):
     pass
 
 # from types import new_class
