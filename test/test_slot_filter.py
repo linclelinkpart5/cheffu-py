@@ -2,7 +2,8 @@ import collections
 import itertools
 import unittest
 
-import slot_filter as sf
+import cheffu.slot_filter as sf
+
 
 class TestBitFilter(unittest.TestCase):
     MAX_SLOTS = 8
@@ -70,7 +71,7 @@ class TestBitFilter(unittest.TestCase):
                     # This should return false
                     self.assertFalse(sf.any_pass(philter, value))
 
-    def test_any_pass(self):
+    def test_all_pass(self):
         for indices, philter in zip(self.SAMPLE_FILTER_SLOTS, self.SAMPLE_FILTERS):
             indices_set = set(indices)
             for combo in self.SLOT_INDEX_COMBINATIONS:
