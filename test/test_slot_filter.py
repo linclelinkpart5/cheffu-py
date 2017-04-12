@@ -36,15 +36,15 @@ class TestBitFilter(unittest.TestCase):
 
     def test_set_indices_args(self):
         for i in self.VALID_SLOT_INDICES:
-            self.assertEqual(sf.set_indices(i), self.SINGLE_INDEX_SLOTS[i])
+            self.assertEqual(sf.make_white_list(i), self.SINGLE_INDEX_SLOTS[i])
 
         # Test that a zero-length filter blocks everything
-        self.assertEqual(sf.set_indices(), sf.BLOCK_ALL)
+        self.assertEqual(sf.make_white_list(), sf.BLOCK_ALL)
 
         # Negative bit shifts raise ValueError
         for i in self.INVALID_SLOT_INDICES:
             with self.assertRaises(ValueError):
-                sf.set_indices(i)
+                sf.make_white_list(i)
 
     def test_set_indices_multi(self):
         # Try all possible combinations (order does not matter)
@@ -63,7 +63,7 @@ class TestBitFilter(unittest.TestCase):
             indices_set = set(indices)
             for combo in self.SLOT_INDEX_COMBINATIONS:
                 combo_set = set(combo)
-                value = sf.set_indices(*combo)
+                value = sf.make_white_list(*combo)
                 if indices_set & combo_set:
                     # This should return true
                     self.assertTrue(sf.any_pass(philter, value))
@@ -76,7 +76,7 @@ class TestBitFilter(unittest.TestCase):
             indices_set = set(indices)
             for combo in self.SLOT_INDEX_COMBINATIONS:
                 combo_set = set(combo)
-                value = sf.set_indices(*combo)
+                value = sf.make_white_list(*combo)
                 if indices_set >= combo_set:
                     # This should return true
                     self.assertTrue(sf.all_pass(philter, value))

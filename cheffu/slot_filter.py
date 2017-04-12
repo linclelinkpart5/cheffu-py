@@ -13,8 +13,8 @@ BLOCK_ALL = ALL_ZERO
 ALLOW_ALL = ALL_ONES
 
 
-def set_indices(*indices: SlotIndex) -> SlotFilter:
-    """Given a list of non-negative integer indices, returns an integer with
+def make_white_list(*indices: SlotIndex) -> SlotFilter:
+    """Given a list of non-negative integer indices, returns a slot filter with
     those bit position indices set to 1, and all other bits set to 0.
 
     Note that the LSB is considered to be index 0.
@@ -24,11 +24,9 @@ def set_indices(*indices: SlotIndex) -> SlotFilter:
         f |= (1 << index)
     return f
 
-make_white_list = set_indices
-
 
 def make_black_list(*slots: SlotIndex) -> SlotFilter:
-    """Given a list of non-negative integer indices, returns an integer with
+    """Given a list of non-negative integer indices, returns a slot filter with
     those bit position indices set to 0, and all other bits set to 1.
 
     Note that the LSB is considered to be index 0.
@@ -61,10 +59,14 @@ def all_pass(slot_filter: SlotFilter, slot_selection: SlotSelection) -> bool:
 
 
 def is_white_list(slot_filter: SlotFilter) -> bool:
+    """Checks if a slot filter is a white list.
+    """
     return slot_filter >= 0
 
 
 def is_black_list(slot_filter: SlotFilter) -> bool:
+    """Checks if a slot filter is a black list.
+    """
     return not is_white_list(slot_filter)
 
 
@@ -90,7 +92,7 @@ def blocked_slots(slot_filter: SlotFilter) -> typing.Iterator[SlotIndex]:
 
 
 def slot_n_allowed(slot_filter: SlotFilter, index: SlotIndex) -> bool:
-    slots = set_indices(index)
+    slots = make_white_list(index)
     return all_pass(slot_filter, slots)
 
 

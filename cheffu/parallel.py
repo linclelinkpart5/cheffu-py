@@ -3,7 +3,7 @@ import typing as typ
 import itertools
 import functools
 import uuid
-import pydot
+import enum
 
 import cheffu.slot_filter as sf
 
@@ -21,38 +21,15 @@ UnfilteredAlt = functools.partial(FilteredAlt, slot_filter=sf.ALLOW_ALL)
 FilteredNull = functools.partial(FilteredAlt, items=())
 UnfilteredNull = functools.partial(UnfilteredAlt, items=())
 
-SlotFilterStack = typ.List[sf.SlotFilter]
+SlotFilterStack = typ.Sequence[sf.SlotFilter]
 
-StackDirection = typ.NewType('StackDirection', bool)
 
-STACK_PUSH = StackDirection(True)
-STACK_POP = StackDirection(False)
+class StackDirection(enum.Enum):
+    PUSH = 'push'
+    POP = 'pop'
 
 # Need to separate slot filter in order to parse and view
 SlotFilterStackCommand = typ.Optional[typ.Tuple[StackDirection, sf.SlotFilter]]
-
-
-# def push_slot_filter_cmd(slot_filter: sf.SlotFilter) -> SlotFilterStackCommand:
-#     def inner(slot_filter_stack: SlotFilterStack) -> None:
-#         slot_filter_stack.append(slot_filter)
-#
-#     return inner
-#
-#
-# def pop_slot_filter_cmd(expected_slot_filter: sf.SlotFilter) -> SlotFilterStackCommand:
-#     def inner(slot_filter_stack: SlotFilterStack) -> None:
-#         value = slot_filter_stack.pop()
-#         if value != expected_slot_filter:
-#             raise Exception()
-#
-#     return inner
-#
-#
-# def no_op_slot_filter_cmd() -> SlotFilterStackCommand:
-#     def inner(_: SlotFilterStack) -> None:
-#         pass
-#
-#     return inner
 
 NoduleSkewer = typ.NamedTuple('NoduleSkewer', [('tokens', typ.Sequence[Token]), ('command', SlotFilterStackCommand)])
 
@@ -63,125 +40,6 @@ NoduleEdgeMap = typ.MutableMapping[
         NoduleSkewer,
     ],
 ]
-
-TOKEN_LIST: TokenPath = (
-    Token('A'),
-    Token('B'),
-    (
-        UnfilteredAlt(
-            items=('C', 'D',),
-        ),
-        UnfilteredAlt(
-            items=('C~', 'D~',),
-        ),
-    ),
-    Token('E'),
-    (
-        FilteredAlt(
-            items=('F', 'G',),
-            slot_filter=sf.make_white_list(0),
-        ),
-        FilteredAlt(
-            items=('F~',),
-            slot_filter=sf.make_white_list(1),
-        ),
-        FilteredAlt(
-            items=('G~',),
-            slot_filter=sf.make_white_list(0, 1),
-        ),
-    ),
-    Token('H'),
-    (
-        UnfilteredAlt(
-            items=('I',),
-        ),
-        UnfilteredNull(),
-    ),
-    Token('J'),
-    (
-        FilteredAlt(
-            items=('K',),
-            slot_filter=sf.make_white_list(0),
-        ),
-        FilteredAlt(
-            items=('K~',),
-            slot_filter=sf.make_white_list(1),
-        ),
-        FilteredNull(
-            slot_filter=sf.make_white_list(2),
-        ),
-    ),
-    Token('L'),
-    (
-        FilteredAlt(
-            items=('M', 'N', 'NN', 'NNN',),
-            slot_filter=sf.make_white_list(0),
-        ),
-    ),
-    Token('O'),
-    (
-        FilteredAlt(
-            items=(
-                (
-                    FilteredAlt(
-                        items=('P',),
-                        slot_filter=sf.make_white_list(0),
-                    ),
-                    FilteredAlt(
-                        items=('Q',),
-                        slot_filter=sf.make_white_list(1),
-                    ),
-                ),
-                Token('R'),
-                (
-                    FilteredAlt(
-                        items=('S',),
-                        slot_filter=sf.make_white_list(0),
-                    ),
-                ),
-            ),
-            slot_filter=sf.make_white_list(0),
-        ),
-        FilteredAlt(
-            items=(
-                (
-                    FilteredAlt(
-                        items=('P~',),
-                        slot_filter=sf.make_white_list(0),
-                    ),
-                    FilteredAlt(
-                        items=('Q~',),
-                        slot_filter=sf.make_white_list(1),
-                    ),
-                ),
-                Token('R~'),
-                (
-                    FilteredAlt(
-                        items=('S~',),
-                        slot_filter=sf.make_white_list(0),
-                    ),
-                    FilteredNull(
-                        slot_filter=sf.make_white_list(1),
-                    ),
-                ),
-            ),
-            slot_filter=sf.make_white_list(2),
-        ),
-    ),
-    Token('T'),
-    (
-        UnfilteredAlt(
-            items=('U',),
-        ),
-        FilteredAlt(
-            items=('V',),
-            slot_filter=sf.make_white_list(1),
-        ),
-        FilteredNull(
-            slot_filter=sf.make_white_list(2),
-        ),
-    ),
-)
 
 
 def normalize_alt_sequence(alt_sequence: AltSequence) -> AltSequence:
@@ -316,8 +174,8 @@ def process_alt_sequence(*
         slot_filter: sf.SlotFilter = alt.slot_filter
 
         # Generate stack operations
-        slot_filter_stack_push: SlotFilterStackCommand = (STACK_PUSH, slot_filter)
-        slot_filter_stack_pop: SlotFilterStackCommand = (STACK_POP, slot_filter)
+        slot_filter_stack_push: SlotFilterStackCommand = (StackDirection.PUSH, slot_filter)
+        slot_filter_stack_pop: SlotFilterStackCommand = (StackDirection.POP, slot_filter)
 
         # Process items as another token path, connecting them to intermediate nodule
         # Remember to add a push command
@@ -360,51 +218,42 @@ def process(token_path: TokenPath, nodule_gen: NoduleGen=None):
                        nodule_edge_map=nodule_edge_map,
                        slot_filter_stack_command=None,
                        )
+
+    # Sanity checks
+    edge_pairs = [(a, b) for a, av in nodule_edge_map.items() for b in av.keys()]
+    edge_pairs_set = set(edge_pairs)
+    assert len(edge_pairs) == len(edge_pairs_set)
+
     return nodule_edge_map, start_nodule, close_nodule
 
 
-# # Sanity checks
-# edge_pairs = [(a, b) for a, av in ADJACENCY_LOOKUP_MAP.items() for b in av.keys()]
-# edge_pairs_set = set(edge_pairs)
-# assert len(edge_pairs) == len(edge_pairs_set)
-#
-# UUID_TO_GV_NODE = {}
-# UUID_PAIR_TO_GV_EDGE = collections.defaultdict(dict)
-# GRAPH = pydot.Dot(graph_type='digraph', strict=False)
-#
-# GRAPH_NODES = []
-# GRAPH_EDGES = []
-#
-# frontier = collections.deque()
-# visited = set()
-#
-# frontier.appendleft(START_UUID)
-# visited.add(START_UUID)
-#
-# while frontier:
-#     curr_uuid = frontier.pop()
-#
-#     curr_token = UUID_TO_TOKEN_MAP[curr_uuid]
-#
-#     # Make a GV node for this UUID
-#     GRAPH_NODES.append(pydot.Node(str(curr_uuid), label=curr_token))
-#
-#     adjacency_gates = ADJACENCY_LOOKUP_MAP[curr_uuid]
-#     for succ_uuid, slot_filter in adjacency_gates.items():
-#         # Make a GV edge for this successor UUID
-#         GRAPH_EDGES.append(pydot.Edge(str(curr_uuid), str(succ_uuid), label=sf.pretty_string(slot_filter)))
-#
-#         if succ_uuid not in visited:
-#             frontier.appendleft(succ_uuid)
-#             visited.add(succ_uuid)
-#
-# assert GRAPH_NODES
-# assert GRAPH_EDGES
-#
-# for node in GRAPH_NODES:
-#     GRAPH.add_node(node)
-#
-# for edge in GRAPH_EDGES:
-#     GRAPH.add_edge(edge)
-#
-# GRAPH.write_png('out.png')
+NoduleWalk = typ.Sequence[Nodule]
+
+
+def yield_nodule_walks(*
+                       , nodule_edge_map: NoduleEdgeMap
+                       , start_nodule: Nodule
+                       ) -> typ.Iterable[NoduleWalk]:
+    def helper(*
+               , nem: NoduleEdgeMap
+               , curr_nodule: Nodule
+               , curr_graph_walk: NoduleWalk
+               , slot_filter_stack: SlotFilterStack
+               ) -> typ.Sequence[NoduleWalk]:
+        if nem[curr_nodule]:
+            for next_nodule in nem[curr_nodule]:
+                next_graph_walk: NoduleWalk = curr_graph_walk + (next_nodule,)
+
+                yield from helper(nem=nem
+                                  , curr_nodule=next_nodule
+                                  , curr_graph_walk=next_graph_walk
+                                  , slot_filter_stack=slot_filter_stack
+                                  )
+        else:
+            yield curr_graph_walk
+
+    yield from helper(nem=nodule_edge_map
+                      , curr_nodule=start_nodule
+                      , curr_graph_walk=(start_nodule,)
+                      , slot_filter_stack=()
+                      )
