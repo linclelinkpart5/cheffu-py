@@ -4,9 +4,20 @@ import itertools
 import functools
 import uuid
 import enum
+import logging
 
 import cheffu.slot_filter as sf
-import cheffu.exceptions as chex
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+ch = logging.StreamHandler()
+ch.setLevel(logging.DEBUG)
+
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+ch.setFormatter(formatter)
+
+logger.addHandler(ch)
 
 # Nodule = typ.NewType('Nodule', uuid.UUID)
 Nodule = typ.NewType('Nodule', int)
@@ -45,8 +56,6 @@ NoduleEdgeMap = typ.MutableMapping[
         NoduleSkewer,
     ],
 ]
-
-SlotFilterHierarchy = typ.Mapping[sf.SlotFilter, 'SlotFilterHierarchy']
 
 
 def normalize_alt_sequence(alt_sequence: AltSequence) -> AltSequence:
@@ -94,6 +103,7 @@ def connect(*
             , encountered_tokens: typ.Sequence[Token]
             , slot_filter_stack_command: SlotFilterStackCommand
             ) -> None:
+    logger.debug(f'Connecting nodule {start_nodule} to nodule {close_nodule}, containing {len(encountered_tokens)} token(s)')
     nodule_skewer: NoduleSkewer = NoduleSkewer(tokens=encountered_tokens, command=slot_filter_stack_command)
     nodule_edge_map[start_nodule][close_nodule] = nodule_skewer
 
@@ -211,6 +221,7 @@ def process_alt_sequence(*
 
 def process(token_path: TokenPath, nodule_gen: NoduleGen=None):
     if nodule_gen is None:
+        logger.debug('Nodule generator not specified, using default generator')
         counter = itertools.count()
 
         def nodule_gen():
@@ -218,7 +229,9 @@ def process(token_path: TokenPath, nodule_gen: NoduleGen=None):
 
     # Create start and close nodules
     start_nodule = nodule_gen()
+    logger.debug(f'Generated start nodule = {start_nodule}')
     close_nodule = nodule_gen()
+    logger.debug(f'Generated close nodule = {close_nodule}')
 
     # Mapping to store edge information
     nodule_edge_map: NoduleEdgeMap = collections.defaultdict(dict)
@@ -262,109 +275,38 @@ SlotFilterChoiceSequence = typ.Sequence[typ.Sequence[sf.SlotFilter]]
 PathDegree = typ.NewType('PathDegree', int)
 
 
-class Multiplexer:
-    @staticmethod
-    def next(_):
-        raise NotImplemented
-
-    @staticmethod
-    def empty_or_raise():
-        raise NotImplemented
-
-
-MultiplexerCFD = typ.Type[Multiplexer]
-
-
-def choice_sequence_multiplexer(slot_filter_choice_sequence: typ.Optional[SlotFilterChoiceSequence]) -> MultiplexerCFD:
-    if slot_filter_choice_sequence is None:
-        class Dummy(Multiplexer):
-            @staticmethod
-            def next(_):
-                return sf.ALLOW_ALL
-
-            @staticmethod
-            def empty_or_raise():
-                pass
-
-        return Dummy
-
-    # Return a callable that, given an integer index, gets the next item in that index's choice sequence
-    plexer = [iter(slot_filter_choices) for slot_filter_choices in slot_filter_choice_sequence]
-
-    class Return(Multiplexer):
-        @staticmethod
-        def next(i):
-            try:
-                return next(plexer[i])
-            except StopIteration:
-                raise chex.NoMoreSlotFilters()
-
-        @staticmethod
-        def empty_or_raise():
-            for plex in plexer:
-                try:
-                    next(plex)
-                    raise chex.LeftoverSlotFilters()
-                except StopIteration:
-                    continue
-
-    return Return
-
-
-def ensure_memory(*
-                  , multiplexer: MultiplexerCFD
-                  , target_path_degree: PathDegree
-                  , memory: typ.MutableSequence[sf.SlotFilter]
-                  ) -> None:
-    if target_path_degree < 0:
-        raise ValueError()
-
-    while len(memory) <= target_path_degree:
-        new_index = len(memory)
-        new_item = multiplexer.next(new_index)
-        memory.append(new_item)
-
-    if len(memory) > target_path_degree + 1:
-        del memory[target_path_degree + 1:]
+# TODO: Continue here!
+# curr_stack_len = len(curr_slot_filter_stack)
+# next_stack_len = len(next_slot_filter_stack)
+#
+# direction = next_stack_len - curr_stack_len
+#
+# if direction == 0:
+#     pass
+# elif direction > 0:
+#     for i in range(curr_stack_len, next_stack_len):
+#         requested_slot_filter = multiplex.extract(i)
+#         potential_slot_filter = next_slot_filter_stack[i]
+#
+#         if sf.intersect(requested_slot_filter, potential_slot_filter) == sf.BLOCK_ALL:
+#             continue
+# elif direction < 0:
+#     for i in range(next_stack_len + 1, len(multiplex)):
+#         multiplex.invalidate(i)
 
 
 def yield_nodule_walks(*
                        , nodule_edge_map: NoduleEdgeMap
                        , start_nodule: Nodule
-                       , slot_filter_choice_sequence: SlotFilterChoiceSequence=None
                        ) -> typ.Iterable[typ.Tuple[NoduleWalk, SlotFilterStackWalk]]:
     """Yields walks (start-to-end traversals) of a nodule edge map, as well as the slot filter stack at each step.
     """
-    # Counts the number of times a specific scope is opened
-    # Needed to check which index in slot filter choice sequence to look up
-    scope_instantiations: typ.Counter[PathDegree] = collections.Counter()
-
-    # This can grow and shrink with respect to the current scope depth
-    # When a split on a i-th degree path is encountered, the i-th element in this is chosen as the slot filter to use
-    # If this element does not exist, it is queried and popped from the slot filter choice sequence
-    chosen_slot_filters: typ.List[sf.SlotFilter] = []
-
-    multiplexer = choice_sequence_multiplexer(slot_filter_choice_sequence)
-
-    # def ensure(i: int):
-    #     while len(chosen_slot_filters) <= i:
-    #         chosen_slot_filters.append(sf.ALLOW_ALL)
-    #
-    #     if len(chosen_slot_filters) >
-
     def helper(*
                , curr_nodule: Nodule
                , curr_walk: NoduleWalk
                , curr_slot_filter_stack: SlotFilterStack
                , curr_slot_filter_stack_walk: SlotFilterStackWalk
                ) -> typ.Iterable[typ.Tuple[NoduleWalk, SlotFilterStackWalk]]:
-
-        # The scope degree at a nodule is equal to the length of the stack at that nodule
-        curr_path_degree: PathDegree = len(curr_slot_filter_stack)
-
-        # if curr_scope_index not in path_memory:
-        #
-
         if nodule_edge_map[curr_nodule]:
             for next_nodule, next_skewer in nodule_edge_map[curr_nodule].items():
                 next_graph_walk: NoduleWalk = tuple(curr_walk) + (next_nodule,)
@@ -372,14 +314,6 @@ def yield_nodule_walks(*
 
                 next_slot_filter_stack = process_stack(curr_slot_filter_stack, command)
                 next_slot_filter_stack_walk = tuple(curr_slot_filter_stack_walk) + (next_slot_filter_stack,)
-
-                next_path_degree: PathDegree = len(next_slot_filter_stack)
-
-                # TODO: Code for checking stack deltas here
-                delta = len(next_slot_filter_stack) - len(curr_slot_filter_stack)
-                # If delta is 1) negative, an item was popped
-                #             2) positive, an item was pushed
-                #             3) zero, no-op
 
                 yield from helper(curr_nodule=next_nodule
                                   , curr_walk=next_graph_walk
@@ -396,65 +330,83 @@ def yield_nodule_walks(*
                       )
 
 
-def eval_choice_sequence(*
-                         , sf_stack_walk: SlotFilterStackWalk
-                         , sf_choice_sequence: SlotFilterChoiceSequence
-                         ):
-    """Yields all nodule walks that satisfy a given slot filter choice sequence.
-    """
-    # Create a list version of choice sequence for easier mutation
-    sf_choice_stacks = [[s_f for s_f in sf_choices] for sf_choices in sf_choice_sequence]
+def pairwise(iterable):
+    a, b = itertools.tee(iterable)
+    next(b, None)
+    return zip(a, b)
 
-    # Indexes into choice stacks and composite SFs
-    curr_degree: int = 0
 
-    # This can grow and shrink with respect to the current scope depth
-    current_composite_sfs: typ.List[sf.SlotFilter] = []
+def check_slot_filter_stack_walk(*
+                                 , slot_filter_stack_walk: SlotFilterStackWalk
+                                 , slot_filter_choice_sequence: SlotFilterChoiceSequence
+                                 ) -> bool:
+    deques: typ.MutableSequence[typ.Deque[sf.SlotFilter]] = [collections.deque(slot_filter_choices)
+                                                             for slot_filter_choices in slot_filter_choice_sequence]
+    caches: typ.MutableSequence[typ.Optional[sf.SlotFilter]] = [None for _ in deques]
 
-    def ensure(i: int):
-        while len(current_composite_sfs) <= i:
-            current_composite_sfs.append(sf.ALLOW_ALL)
+    def extract(index):
+        if caches[index] is None:
+            caches[index] = deques[index].pop()
+        return caches[index]
 
-    for sf_stack in sf_stack_walk:
-        curr_degree = len(sf_stack)
+    def is_empty():
+        empties = [len(d) == 0 for d in deques]
+        return all(empties)
 
-# def yield_nodule_walks_choices(*
-#                                , nodule_edge_map: NoduleEdgeMap
-#                                , start_nodule: Nodule
-#                                ) -> typ.Iterable[typ.Tuple[NoduleWalk, SlotFilterChoiceSequence]]:
-#
-#     def flatten(stack_walk: SlotFilterStackWalk) -> SlotFilterChoiceSequence:
-#         slot_filter_buckets: typ.MutableMapping[int, typ.MutableMapping[int, sf.SlotFilter]] = collections.defaultdict(lambda: collections.defaultdict(sf.ALLOW_ALL))
-#
-#         # Whenever the length of the slot filter stack increases from the previous iteration, add any new elements
-#         # to the respective buckets
-#
-#         for slot_filter_stack in stack_walk:
-#             for i, slot_filter in enumerate(slot_filter_stack):
-#                 slot_filter_buckets[i] = sf.intersection(result[i], slot_filter)
-#
-#         return tuple(result)
-#
-#     for nodule_walk, slot_filter_stack_walk in yield_nodule_walks(nodule_edge_map=nodule_edge_map
-#                                                                   , start_nodule=start_nodule
-#                                                                   ):
-#             yield nodule_walk, flatten(slot_filter_stack_walk)
+    def invalidate_deeper_than(index):
+        for j in range(index, len(deques)):
+            caches[j] = None
 
-# def yield_nodule_walks_flattened(*
-#                                  , nodule_edge_map: NoduleEdgeMap
-#                                  , start_nodule: Nodule
-#                                  ) -> typ.Iterable[typ.Tuple[NoduleWalk, SlotFilterChoiceSequence]]:
-#     def flatten(stack_walk: SlotFilterStackWalk) -> SlotFilterChoiceSequence:
-#         result = []
-#         for slot_filter_stack in stack_walk:
-#             for i, slot_filter in enumerate(slot_filter_stack):
-#                 if len(result) <= i:
-#                     result.append(slot_filter)
-#                     assert len(result) == i + 1
-#
-#                 result[i] = sf.intersection(result[i], slot_filter)
-#
-#         return tuple(result)
-#
-#     for nodule_walk, slot_filter_stack_walk in yield_nodule_walks(nodule_edge_map=nodule_edge_map, start_nodule=start_nodule):
-#         yield nodule_walk, flatten(slot_filter_stack_walk)
+    for prev_slot_filter_stack, curr_slot_filter_stack in pairwise(slot_filter_stack_walk):
+        prev_degree: PathDegree = len(prev_slot_filter_stack)
+        curr_degree: PathDegree = len(curr_slot_filter_stack)
+
+        direction = curr_degree - prev_degree
+
+        if direction == 0:
+            # TODO: Only checks if lengths are the same, not contents
+            pass
+        elif direction > 0:
+            for i in range(prev_degree, curr_degree):
+                requested_slot_filter = extract(i)
+                potential_slot_filter = curr_slot_filter_stack[i]
+
+                if sf.intersection(requested_slot_filter, potential_slot_filter) == sf.BLOCK_ALL:
+                    return False
+        elif direction < 0:
+            invalidate_deeper_than(curr_degree + 1)
+
+    if not is_empty():
+        return False
+
+    return True
+
+
+def is_legal_slot_filter_stack_walk(slot_filter_stack_walk: SlotFilterStackWalk) -> bool:
+    caches: typ.DefaultDict[PathDegree, sf.SlotFilter] = {}
+
+    for prev_slot_filter_stack, curr_slot_filter_stack in pairwise(slot_filter_stack_walk):
+        prev_degree: PathDegree = len(prev_slot_filter_stack)
+        curr_degree: PathDegree = len(curr_slot_filter_stack)
+
+        direction = curr_degree - prev_degree
+
+        if direction == 0:
+            # TODO: Only checks if lengths are the same, not contents
+            pass
+        elif direction > 0:
+            for i in range(prev_degree, curr_degree):
+                if i not in caches:
+                    caches[i] = curr_slot_filter_stack[i]
+
+                cached_slot_filter = caches[i]
+                tested_slot_filter = curr_slot_filter_stack[i]
+
+                if sf.intersection(cached_slot_filter, tested_slot_filter) == sf.BLOCK_ALL:
+                    return False
+        elif direction < 0:
+            for k in set(caches.keys()):
+                if k > curr_degree:
+                    del caches[k]
+
+    return True
