@@ -14,36 +14,42 @@ t = blessings.Terminal()
 l_sf = sf.make_white_list(0, 1)
 r_sf = sf.invert(l_sf)
 
+sf_p_0_1 = sf.make_white_list(0, 1)
+
+sample_slot_filters = {
+    '0_1': sf.make_white_list(0, 1),
+}
+
 token_paths: typ.Mapping[str, par.TokenPath] = {
-    # (),
-    # (
-    #     par.Token('A'),
-    #     par.Token('B'),
-    #     par.Token('C'),
-    #     par.Token('D'),
-    #     par.Token('E'),
-    # ),
-    # (
-    #     par.Token('A'),
-    #     par.Token('B'),
-    #     (
-    #         par.UnfilteredAlt(
-    #             items=('C', 'D',),
-    #         ),
-    #         par.UnfilteredAlt(
-    #             items=('C~', 'D~',),
-    #         ),
-    #     ),
-    #     (
-    #         par.UnfilteredAlt(
-    #             items=('E', 'F',),
-    #         ),
-    #         par.UnfilteredAlt(
-    #             items=('E~', 'F~',),
-    #         ),
-    #     ),
-    #     par.Token('G'),
-    # ),
+    'empty': (),
+    'sequence': (
+        par.Token('A'),
+        par.Token('B'),
+        par.Token('C'),
+        par.Token('D'),
+        par.Token('E'),
+    ),
+    'simple_ub_split': (
+        par.Token('A'),
+        par.Token('B'),
+        (
+            par.UnfilteredAlt(
+                items=('C', 'D',),
+            ),
+            par.UnfilteredAlt(
+                items=('C~', 'D~',),
+            ),
+        ),
+        (
+            par.UnfilteredAlt(
+                items=('E', 'F',),
+            ),
+            par.UnfilteredAlt(
+                items=('E~', 'F~',),
+            ),
+        ),
+        par.Token('G'),
+    ),
     # (
     #     par.Token('O'),
     #     (
@@ -373,41 +379,16 @@ token_paths: typ.Mapping[str, par.TokenPath] = {
 
 # from line_profiler import LineProfiler
 #
-#
-# def do_stuff():
-#     slot_filter_choice_sequence: par.SlotFilterChoiceSequence = ((1,), (4, 5), (6,))
-#
-#     multiplexer = par.choice_sequence_multiplexer(slot_filter_choice_sequence)
-#
-#     print(multiplexer.next(0))
-#     print(multiplexer.next(1))
-#     print(multiplexer.next(1))
-#     print(multiplexer.next(2))
-#     multiplexer.empty_or_raise()
-#
-#     multiplexer = par.choice_sequence_multiplexer(slot_filter_choice_sequence)
-#
-#     memory = []
-#     par.ensure_memory(multiplexer=multiplexer, target_path_degree=0, memory=memory)
-#     print(memory)
-#     par.ensure_memory(multiplexer=multiplexer, target_path_degree=2, memory=memory)
-#     print(memory)
-#     par.ensure_memory(multiplexer=multiplexer, target_path_degree=0, memory=memory)
-#     print(memory)
-#     par.ensure_memory(multiplexer=multiplexer, target_path_degree=1, memory=memory)
-#     print(memory)
-#     multiplexer.empty_or_raise()
-#
 # lp = LineProfiler()
 # lp_wrapper = lp(do_stuff)
 # lp_wrapper()
 # lp.print_stats()
 
 
-choices: par.SlotFilterChoiceSequence = (
-    (sf.make_white_list(1),),
-    (sf.make_white_list(0), sf.make_white_list(2)),
-)
+# choices: par.SlotFilterChoiceSequence = (
+#     (sf.make_white_list(1),),
+#     (sf.make_white_list(0), sf.make_white_list(2)),
+# )
 
 for token_path_key, token_path in token_paths.items():
     nodule_edge_map, start_nodule, close_nodule = par.process(token_path)
@@ -415,20 +396,19 @@ for token_path_key, token_path in token_paths.items():
 
     graph.write_png(f'{token_path_key}.png')
 
-    # pprint.pprint(nodule_edge_map)
-
     for nodule_walk, slot_filter_stack_walk in par.yield_nodule_walks(nodule_edge_map=nodule_edge_map
                                                                       , start_nodule=start_nodule
+                                                                      , drop_invalid=False
                                                                       ):
-
-        is_valid = par.is_legal_slot_filter_stack_walk(slot_filter_stack_walk=slot_filter_stack_walk)
+        is_valid, choices = par.validate_slot_filter_stack_walk(slot_filter_stack_walk=slot_filter_stack_walk)
 
         is_valid_str = t.green(str(is_valid)) if is_valid else t.red(str(is_valid))
         print(f'Is Valid? {is_valid_str}')
 
-        if is_valid:
+        if True:
             for nodule, slot_filter_stack in zip(nodule_walk, slot_filter_stack_walk):
                 print('{:<8}{}'.format(nodule, str(slot_filter_stack)))
+            print('Choices: ', choices)
 
         print('-' * 80)
 
