@@ -8,3 +8,7 @@ class LeftoverSlotFilters(CheffuBaseException):
 
 class NoMoreSlotFilters(CheffuBaseException):
     """Raised when slot filters are requested, but no more are available."""
+
+
+class InvalidSlotFilterPath(CheffuBaseException):
+    """Raised when an attempt is made to traverse a Cheffu graph path with an incorrect slot filter."""

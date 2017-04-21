@@ -35,10 +35,16 @@ def make_black_list(*slots: SlotIndex) -> SlotFilter:
 
 
 def union(slot_filter_a: SlotFilter, slot_filter_b: SlotFilter) -> SlotFilter:
+    """Combines two slot filters using a union operation.
+    The resulting slot filter has all slots contained in either input slot filter.
+    """
     return slot_filter_a | slot_filter_b
 
 
 def intersection(slot_filter_a: SlotFilter, slot_filter_b: SlotFilter) -> SlotFilter:
+    """Combines two slot filters using an intersection operation.
+    The resulting slot filter has all slots contained in both input slot filters.
+    """
     return slot_filter_a & slot_filter_b
 
 

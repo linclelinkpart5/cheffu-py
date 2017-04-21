@@ -5,7 +5,7 @@ import unittest
 import cheffu.slot_filter as sf
 
 
-class TestBitFilter(unittest.TestCase):
+class TestSlotFilter(unittest.TestCase):
     MAX_SLOTS = 8
 
     VALID_SLOT_INDICES = tuple(range(MAX_SLOTS))

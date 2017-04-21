@@ -4,10 +4,12 @@ import itertools
 import functools
 import uuid
 import enum
+import copy
 
 import cheffu.slot_filter as sf
 import cheffu.logging as clog
 import cheffu.helpers as chlp
+import cheffu.exceptions as chex
 
 logger = clog.get_logger(__name__)
 
@@ -267,11 +269,11 @@ SlotFilterChoiceSequence = typ.Sequence[typ.Sequence[sf.SlotFilter]]
 PathDegree = typ.NewType('PathDegree', int)
 
 
-def yield_nodule_walks(*
-                       , nodule_edge_map: NoduleEdgeMap
-                       , start_nodule: Nodule
-                       , drop_invalid: bool=True
-                       ) -> typ.Iterable[typ.Tuple[NoduleWalk, SlotFilterStackWalk]]:
+def yield_all_nodule_walks(*
+                           , nodule_edge_map: NoduleEdgeMap
+                           , start_nodule: Nodule
+                           , close_nodule: Nodule=None
+                           ) -> typ.Iterable[typ.Tuple[NoduleWalk, SlotFilterStackWalk]]:
     """Yields walks (start-to-end traversals) of a nodule edge map, as well as the slot filter stack at each step.
     """
     def helper(*
@@ -292,10 +294,15 @@ def yield_nodule_walks(*
                                   , curr_walk=next_graph_walk
                                   , curr_slot_filter_stack=next_slot_filter_stack
                                   , curr_slot_filter_stack_walk=next_slot_filter_stack_walk
+                                  # , curr_caches=caches
+                                  # , curr_stacks=stacks
                                   )
         else:
-            if drop_invalid and not is_legal_slot_filter_stack_walk(slot_filter_stack_walk=curr_slot_filter_stack_walk):
+            if close_nodule is not None and curr_nodule != close_nodule:
+                logger.warning(f'Found branch that does not end with expected close nodule, '
+                               f'expected = {close_nodule}, found = {curr_nodule}')
                 return
+
             yield curr_walk, curr_slot_filter_stack_walk
 
     yield from helper(curr_nodule=start_nodule
@@ -303,6 +310,20 @@ def yield_nodule_walks(*
                       , curr_slot_filter_stack=()
                       , curr_slot_filter_stack_walk=((),)
                       )
+
+
+def yield_valid_nodule_walks(*
+                             , nodule_edge_map: NoduleEdgeMap
+                             , start_nodule: Nodule
+                             , close_nodule: Nodule=None
+                             ) -> typ.Iterable[typ.Tuple[NoduleWalk, SlotFilterStackWalk, SlotFilterChoiceSequence]]:
+    for nodule_walk, slot_filter_stack_walk in yield_all_nodule_walks(nodule_edge_map=nodule_edge_map
+                                                                      , start_nodule=start_nodule
+                                                                      , close_nodule=close_nodule
+                                                                      ):
+        is_valid, choice_sequence = validate_slot_filter_stack_walk(slot_filter_stack_walk=slot_filter_stack_walk)
+        if is_valid:
+            yield nodule_walk, slot_filter_stack_walk, choice_sequence
 
 
 def validate_slot_filter_stack_walk(*
@@ -321,8 +342,8 @@ def validate_slot_filter_stack_walk(*
 
         direction = curr_degree - prev_degree
 
+        # At this point, one stack should be a prefix of the other
         if direction == 0:
-            # TODO: Only checks if lengths are the same, not contents
             pass
         elif direction > 0:
             for i in range(prev_degree, curr_degree):
@@ -333,8 +354,12 @@ def validate_slot_filter_stack_walk(*
                 cached_slot_filter = caches[i]
                 tested_slot_filter = curr_slot_filter_stack[i]
 
-                if sf.intersection(cached_slot_filter, tested_slot_filter) == sf.BLOCK_ALL:
+                intersect = sf.intersection(cached_slot_filter, tested_slot_filter)
+                if intersect == sf.BLOCK_ALL:
                     return False, None
+
+                caches[i] = intersect
+                stacks[i][-1] = intersect
         elif direction < 0:
             to_delete = set()
             for k in caches.keys():
@@ -352,9 +377,21 @@ def validate_slot_filter_stack_walk(*
     return True, choice_sequence
 
 
-# TODO: Have this functionality be included in the slot filter walk generator
-def is_legal_slot_filter_stack_walk(*,
-                                    slot_filter_stack_walk: SlotFilterStackWalk
-                                    ) -> bool:
+def is_valid_stack_walk(*,
+                        slot_filter_stack_walk: SlotFilterStackWalk
+                        ) -> bool:
     result, _ = validate_slot_filter_stack_walk(slot_filter_stack_walk=slot_filter_stack_walk)
     return result
+
+
+def get_allowed_slots(*
+                      , slot_filter_stack_walk: SlotFilterStackWalk
+                      ) -> typ.Sequence[typ.AbstractSet[sf.SlotIndex]]:
+    cache = collections.defaultdict(set)
+
+    for slot_filter_stack in slot_filter_stack_walk:
+        for i, slot_filter in enumerate(slot_filter_stack):
+            if sf.is_white_list(slot_filter):
+                cache[i].update(sf.allowed_slots(slot_filter))
+
+    return tuple(frozenset(v) for _, v in sorted(cache.items()))
