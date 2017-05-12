@@ -17,7 +17,7 @@ logger = clog.get_logger(__name__)
 Nodule = typ.NewType('Nodule', int)
 NoduleGen = typ.Callable[[], Nodule]
 
-Token = typ.NewType('Token', str)
+Token = typ.NewType('Token', dict)
 AltSequence = typ.Sequence['FilteredAlt']
 PathItem = typ.Union[Token, AltSequence]
 TokenPath = typ.Sequence[PathItem]
@@ -36,8 +36,8 @@ class StackDirection(enum.Enum):
 
 # Need to separate slot filter in order to parse and view
 id_gen = itertools.count()
-SlotFilterStackOperation = typ.NamedTuple('SlotFilterStackOperation'
-                                          , (('direction', StackDirection), ('slot_filter', sf.SlotFilter))
+SlotFilterStackOperation = typ.NamedTuple('SlotFilterStackOperation',
+                                          (('direction', StackDirection), ('slot_filter', sf.SlotFilter))
                                           )
 SlotFilterStackCommand = typ.Optional[SlotFilterStackOperation]
 
@@ -90,12 +90,42 @@ def normalize_alt_sequence(alt_sequence: AltSequence) -> AltSequence:
     return alt_sequence
 
 
-def connect(*
-            , start_nodule: Nodule
-            , close_nodule: Nodule
-            , nodule_edge_map: NoduleEdgeMap
-            , encountered_tokens: typ.Sequence[Token]
-            , slot_filter_stack_command: SlotFilterStackCommand
+AllowedSlotIndices = typ.AbstractSet[sf.SlotIndex]
+
+
+def generate_allowed_slot_indices_from_alt(*
+                                           , alt_sequence: AltSequence
+                                           ) -> AllowedSlotIndices:
+    interesting_slot_indices: typ.Set[sf.SlotIndex] = set()
+    for alt in alt_sequence:
+        slot_filter: sf.SlotFilter = alt.slot_filter
+
+        if sf.is_white_list(slot_filter):
+            interesting_slot_indices.update(sf.allowed_slots(slot_filter))
+        else:
+            interesting_slot_indices.update(sf.blocked_slots(slot_filter))
+
+    if interesting_slot_indices:
+        sorted_slot_indices: typ.List[sf.SlotIndex] = sorted(interesting_slot_indices)
+
+        if all(map(lambda t: sf.SlotIndex(t[0]) == t[1], enumerate(sorted_slot_indices))):
+            # All slot indices less than the largest selected are also selected.
+            # Select the lowest index not selected, which is equal to the length of the collection.
+            interesting_slot_indices.add(len(sorted_slot_indices))
+        else:
+            # At least one slot index less than the largest selected is not selected.
+            # Select all slot indices in [0...<largest index>], inclusive.
+            interesting_slot_indices.update(range(0, sorted_slot_indices[-1]))
+
+    return frozenset(interesting_slot_indices)
+
+
+def connect(*,
+            start_nodule: Nodule,
+            close_nodule: Nodule,
+            nodule_edge_map: NoduleEdgeMap,
+            encountered_tokens: typ.Sequence[Token],
+            slot_filter_stack_command: SlotFilterStackCommand
             ) -> None:
     logger.debug(f'Connecting nodule {start_nodule} to nodule {close_nodule}, '
                  f'containing {len(encountered_tokens)} token(s)')
@@ -384,14 +414,37 @@ def is_valid_stack_walk(*,
     return result
 
 
-def get_allowed_slots(*
-                      , slot_filter_stack_walk: SlotFilterStackWalk
-                      ) -> typ.Sequence[typ.AbstractSet[sf.SlotIndex]]:
-    cache = collections.defaultdict(set)
+def get_token_sequence(*
+                       , nodule_edge_map: NoduleEdgeMap
+                       , nodule_walk: NoduleWalk
+                       ) -> typ.Iterable[Token]:
+    return itertools.chain.from_iterable(nodule_edge_map[nodule_a][nodule_b].tokens
+                                         for nodule_a, nodule_b in chlp.pairwise(nodule_walk)
+                                         )
 
-    for slot_filter_stack in slot_filter_stack_walk:
-        for i, slot_filter in enumerate(slot_filter_stack):
-            if sf.is_white_list(slot_filter):
-                cache[i].update(sf.allowed_slots(slot_filter))
 
-    return tuple(frozenset(v) for _, v in sorted(cache.items()))
+AllowedSlotMap = typ.MutableMapping[
+    Nodule,
+    typ.MutableMapping[
+        sf.SlotIndex,
+        Nodule,
+    ],
+]
+
+
+# TODO: Need a way to list all legal filtered paths through a recipe, as well as a way to address each unique path.
+
+
+# def generate_allowed_slot_map(*
+#                               , nodule_edge_map: NoduleEdgeMap
+#                               , start_nodule: Nodule
+#                               , close_nodule: Nodule=None
+#                               ):
+#     allowed_slot_map: AllowedSlotMap = collections.defaultdict(dict)
+#
+#     for _, stack_walk, _ in yield_valid_nodule_walks(nodule_edge_map=nodule_edge_map
+#                                                                         , start_nodule=start_nodule
+#                                                                         , close_nodule=close_nodule
+#                                                                         ):
+#         for stack in stack_walk:
+

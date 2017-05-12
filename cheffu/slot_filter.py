@@ -1,6 +1,4 @@
 import typing
-import functools
-import operator
 
 SlotFilter = typing.NewType('SlotFilter', int)
 SlotIndex = typing.NewType('SlotIndex', int)

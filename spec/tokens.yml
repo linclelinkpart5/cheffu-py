@@ -1,0 +1,231 @@
+- name: Ingredient
+  key: INGR
+  argument: CheffuString
+  pipelines:
+    - inputs: []
+      outputs: [Ingredient]
+- name: Tool
+  key: TOOL
+  argument: CheffuString
+  pipelines:
+    - inputs: []
+      outputs: [Tool]
+- name: Container
+  key: CONT
+  argument: CheffuString
+  pipelines:
+    - inputs: []
+      outputs: [Container]
+- name: Appliance
+  key: APPL
+  argument: CheffuString
+  pipelines:
+    - inputs: []
+      outputs: [Appliance]
+- name: Environment
+  key: ENVR
+  argument: CheffuString
+  pipelines:
+    - inputs: []
+      outputs: [Environment]
+- name: Verb
+  key: VERB
+  argument: CheffuString
+  pipelines:
+    - inputs: [Has(Mixture)]
+      outputs: [Has(Mixture)]
+- name: Add
+  key: ADDI
+  argument: CheffuString
+  pipelines:
+    - inputs: [Has(Container), Has(Mixture)]
+      outputs: [Has(Container, Mixture)]
+    - inputs: [Has(Mixture), Has(Mixture)]
+      outputs: [Has(Mixture)]
+- name: AddTo
+  key: ADDT
+  argument: CheffuString
+  pipelines:
+    - inputs: [Has(Mixture), Has(Container)]
+      outputs: [Has(Container, Mixture)]
+    - inputs: [Has(Mixture), Has(Mixture)]
+      outputs: [Has(Mixture)]
+- name: Move
+  key: MOVE
+  argument: CheffuString
+  pipelines:
+    - inputs: [Has(Container, Mixture), Has(Mixture)]
+      outputs: [Has(Container), Has(Mixture)]
+    - inputs: [Has(Container, Mixture), Has(Container)]
+      outputs: [Has(Container), Has(Container, Mixture)]
+- name: MoveFrom
+  key: MOVF
+  argument: CheffuString
+  pipelines:
+    - inputs: [Has(Mixture), Has(Container, Mixture)]
+      outputs: [Has(Mixture), Has(Container)]
+    - inputs: [Has(Container), Has(Container, Mixture)]
+      outputs: [Has(Container, Mixture), Has(Container)]
+- name: Divide
+  key: DIVI
+  argument: ~
+  pipelines:
+    - inputs: [Has(Mixture)]
+      outputs: [Has(Mixture), Mixture]
+- name: Reserve
+  key: RESV
+  argument: ~
+  pipelines:
+    - inputs: [Has(Mixture)]
+      outputs: [Has(Mixture), Mixture]
+- name: Configure
+  key: CONF
+  argument: CheffuString
+  pipelines:
+    - inputs: [Has(Appliance)]
+      outputs: [Has(Appliance)]
+- name: Meld
+  key: MELD
+  argument: CheffuString
+  pipelines:
+    - inputs: [Has(Container), Tool]
+      outputs: [Has(Container)]
+- name: Place
+  key: PLAC
+  argument: ~
+  pipelines:
+    - inputs: [Has(Environment), Has(Placable)]
+      outputs: [Has(Environment, Placable)]
+- name: Remove
+  key: REMO
+  argument: ~
+  pipelines:
+    - inputs: [Has(Environment, Placable)]
+      outputs: [Has(Placable)]
+- name: Bind
+  key: BIND
+  argument: ~
+  pipelines:
+    - inputs: [Has(Mixture), Tool]
+      outputs: [Has(Mixture)]
+- name: Discard
+  key: DISC
+  argument: ~
+  pipelines:
+    - inputs: [Has(Mixture)]
+      outputs: []
+- name: Empty
+  key: EMPT
+  argument: ~
+  pipelines:
+    - inputs: [Has(Container, Mixture)]
+      outputs: [Has(Container)]
+- name: Simultaneous
+  key: SIMU
+  argument: ~
+  pipelines:
+    - inputs: [Action, Verb]
+      outputs: [Action]
+- name: LookupSet
+  key: LSET
+  argument: CheffuString
+  pipelines:
+    - inputs: [Taggable]
+      outputs: [Taggable]
+- name: LookupGet
+  key: LGET
+  argument: CheffuString
+  # Shifts stack contents around
+  pipelines:
+    - inputs: ~
+      outputs: ~
+- name: Precondition
+  key: PREC
+  argument: CheffuString
+  pipelines:
+    - inputs: [Environment]
+      outputs: [Environment]
+- name: Modifier
+  key: MODI
+  argument: CheffuString
+  pipelines:
+    - inputs: [Modifiable]
+      outputs: [Modifiable]
+- name: Annotation
+  key: ANNO
+  argument: CheffuString
+  pipelines:
+    - inputs: [Annotatable]
+      outputs: [Annotatable]
+- name: Photo
+  key: PHOT
+  argument: CheffuURIString
+  pipelines:
+    - inputs: [Photoable]
+      outputs: [Photoable]
+- name: Fraction
+  key: FRAC
+  argument: CheffuFraction
+  pipelines:
+    - inputs: [Partitionable]
+      outputs: [Partitionable]
+- name: QuantityMass
+  key: QMAS
+  argument: CheffuQuantityMass
+  pipelines:
+    - inputs: [Measurable]
+      outputs: [Measurable]
+- name: QuantityVolume
+  key: QVOL
+  argument: CheffuQuantityVolume
+  pipelines:
+    - inputs: [Measurable]
+      outputs: [Measurable]
+- name: QuantityCount
+  key: QCNT
+  argument: CheffuQuantityCount
+  pipelines:
+    - inputs: [Measurable]
+      outputs: [Measurable]
+- name: Pseudoselect
+  key: PSEU
+  argument: CheffuString
+  pipelines:
+    - inputs: [Partitionable]
+      outputs: [Partitionable]
+- name: Time
+  key: TIME
+  argument: CheffuTimeInterval
+  pipelines:
+    - inputs: [Timable]
+      outputs: [Timable]
+- name: Until
+  key: UNTL
+  argument: CheffuString
+  pipelines:
+    - inputs: [Timable]
+      outputs: [Timable]
+- name: Group
+  key: GRUP
+  argument: CheffuTokenSequence
+  pipelines:
+    - inputs: []
+      outputs: [Group]
+- name: VariantTag
+  key: VTAG
+  argument: CheffuSlotSet
+  pipelines:
+    - inputs: [Group]
+      outputs: [Group]
+- name: VariantOr
+  key: VORR
+  argument: ~
+  pipelines:
+    - inputs: [Alternatable, Alternatable]
+      outputs: [Alternatable]
+- name: Repeat
+  key: REPT
+  argument: CheffuPosInteger
+  pipelines:
+    - inputs: [Group]
+      outputs: [Group]

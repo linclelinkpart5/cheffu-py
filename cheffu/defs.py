@@ -1,531 +1,502 @@
-from collections import namedtuple
-from types import new_class
+import typing as typ
 
-import interfaces as ci
+import voluptuous
 
-from argument_schema import ArgumentSchemas as asc
+import cheffu.interfaces as ci
+from cheffu.argument_schema import ArgumentSchemas as asc
 
-from voluptuous import Schema
 
-IOSeq = namedtuple(
-    'IOSeq',
-    (
-        'input_seq',
-        'output_seq'
-    ),
-)
-
-Pipeline = namedtuple(
-    'Pipeline',
-    (
-        'inputs',       # Expected inputs, to be popped from stack
-        # 'outputs',      # Expected outputs, to be pushed onto stack
-        'process',
-    ),
-)
-
-TokenInitDef = namedtuple(
-    'TokenInitDef',
-    (
-        'klass',        # Class to use to represent this token (data and interface)
-        'keyword',      # Token keyword, used in JSON
-        'arg_schema',   # Schema that argument needs to validate against
-        'pipelines',    # Definitions for combinations of inputs, outputs, and processors
-    ),
-)
-
-TokenDef = namedtuple(
-    'TokenDef',
-    TokenInitDef._fields + (
-        'name',         # Human-friendly token name, taken from klass
-        'schema',       # Schema of this token's dict representation, uses arg_schema
-    ),
-)
-
-def concrete_processor(cls):
-    return lambda arg, ins, stk: cls(arg)
-
-TokenInitDefs = frozenset({
-
-    #### Concrete Tokens #######################################################
-
-    TokenInitDef(
-        klass=ci.Ingredient,
-        keyword='INGR',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=(),
-                # outputs=(ci.Ingredient,),
-                process=concrete_processor(ci.Ingredient),
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Tool,
-        keyword='TOOL',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=(),
-                # outputs=(ci.Tool,),
-                process=lambda arg, ins, stk: concrete_processor(ci.Tool),
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Vessel,
-        keyword='VESS',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=(),
-                # outputs=(ci.Vessel,),
-                process=lambda arg, ins, stk: concrete_processor(ci.Vessel),
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Appliance,
-        keyword='APPL',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=(),
-                # outputs=(ci.Appliance,),
-                process=lambda arg, ins, stk: concrete_processor(ci.Appliance),
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Environment,
-        keyword='ENVR',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=(),
-                # outputs=(ci.Environment,),
-                process=lambda arg, ins, stk: concrete_processor(ci.Environment),
-            ),
-        ),
-    ),
-
-    #### Operational Tokens ####################################################
-
-    TokenInitDef(
-        klass=ci.Verb,
-        keyword='VERB',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=(ci.Haz(ci.Foodstuff),),
-                # outputs=(ci.Haz(ci.Foodstuff),),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Add,
-        keyword='ADDI',
-        arg_schema=asc.NONE,
-        pipelines=(
-            Pipeline(
-                inputs=(ci.Haz(ci.Foodstuff), ci.Haz(ci.Foodstuff),),
-                # outputs=(ci.Haz(ci.Foodstuff),),
-                process=None,
-            ),
-            Pipeline(
-                inputs=(ci.Haz(ci.Container), ci.Haz(ci.Foodstuff),),
-                # outputs=('System',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.AddTo,
-        keyword='ADDT',
-        arg_schema=asc.NONE,
-        pipelines=(
-            Pipeline(
-                inputs=(ci.Haz(ci.Foodstuff), ci.Haz(ci.Foodstuff),),
-                # outputs=(ci.Haz(ci.Foodstuff),),
-                process=None,
-            ),
-            Pipeline(
-                inputs=(ci.Haz(ci.Foodstuff), ci.Haz(ci.Container),),
-                # outputs=('System',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Move,
-        keyword='MOVE',
-        arg_schema=asc.NONE,
-        pipelines=(
-            Pipeline(
-                inputs=('System', ci.Haz(ci.Foodstuff),),
-                # outputs=('Vessel', ci.Haz(ci.Foodstuff),),
-                process=None,
-            ),
-            Pipeline(
-                inputs=('System', ci.Haz(ci.Container),),
-                # outputs=('Vessel', 'System',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.MoveFrom,
-        keyword='MOVF',
-        arg_schema=asc.NONE,
-        pipelines=(
-            Pipeline(
-                inputs=(ci.Haz(ci.Foodstuff), 'System',),
-                # outputs=('Vessel', ci.Haz(ci.Foodstuff),),
-                process=None,
-            ),
-            Pipeline(
-                inputs=(ci.Haz(ci.Container), 'System',),
-                # outputs=('Vessel', 'System',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Divide,
-        keyword='DIVI',
-        arg_schema=asc.NONE,
-        pipelines=(
-            Pipeline(
-                inputs=(ci.Haz(ci.Foodstuff),),
-                # outputs=(ci.Haz(ci.Foodstuff), 'Food',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Reserve,
-        keyword='RESV',
-        arg_schema=asc.NONE,
-        pipelines=(
-            Pipeline(
-                inputs=(ci.Haz(ci.Foodstuff),),
-                # outputs=(ci.Haz(ci.Foodstuff), 'Food',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Configure,
-        keyword='CONF',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=('Has(Appliance)',),
-                # outputs=('Has(Appliance)',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Meld,
-        keyword='MELD',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=(ci.Haz(ci.Container), ci.Tool,),
-                # outputs=(ci.Haz(ci.Container),),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Place,
-        keyword='PLAC',
-        arg_schema=asc.NONE,
-        pipelines=(
-            Pipeline(
-                inputs=('Has(Environment)', 'Placeable',),
-                # outputs=('Process',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Remove,
-        keyword='RMVE',
-        arg_schema=asc.NONE,
-        pipelines=(
-            Pipeline(
-                inputs=('Process',),
-                # outputs=('Placeable',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Bind,
-        keyword='BIND',
-        arg_schema=asc.NONE,
-        pipelines=(
-            Pipeline(
-                inputs=(ci.Haz(ci.Foodstuff), ci.Tool,),
-                # outputs=(ci.Haz(ci.Foodstuff),),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Discard,
-        keyword='DISC',
-        arg_schema=asc.NONE,
-        pipelines=(
-            Pipeline(
-                inputs=('Has(Mixture)',),
-                # outputs=(),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Empty,
-        keyword='EMPT',
-        arg_schema=asc.NONE,
-        pipelines=(
-            Pipeline(
-                inputs=('System',),
-                # outputs=('Vessel',),
-                process=None,
-            ),
-        ),
-    ),
-    # TODO: How does this work with multiple Tools?
-    # TODO: Maybe have this work on two Verbs as input?
-    TokenInitDef(
-        klass=ci.Simultaneous,
-        keyword='SIMU',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=('Has(Verb)',),
-                # outputs=('Has(Verb)',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.LookupGet,
-        keyword='LGET',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=(),
-                # outputs=(),
-                process=None,
-            ),
-        ),
-    ),
-
-    #### Metadata Tokens #######################################################
-
-    TokenInitDef(
-        klass=ci.Condition,
-        keyword='COND',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=('Has(Environment)',),
-                # outputs=('Has(Environment)',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Modifier,
-        keyword='MODI',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=('Modifiable',),
-                # outputs=('Modifiable',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Annotation,
-        keyword='ANNO',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=('Annotatable',),
-                # outputs=('Annotatable',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Photo,
-        keyword='PHOT',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=('Photoable',),
-                # outputs=('Photoable',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.LookupSet,
-        keyword='LSET',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=('Lookupable',),
-                # outputs=('Lookupable',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Fraction,
-        keyword='FRAC',
-        arg_schema=asc.FRACTION,
-        pipelines=(
-            Pipeline(
-                inputs=('Divisor',),
-                # outputs=('Divisor',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Pseudoselect,
-        keyword='PSEU',
-        arg_schema=asc.STRING,
-        pipelines=(
-            Pipeline(
-                inputs=('Divisor',),
-                # outputs=('Divisor',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.QuantityMass,
-        keyword='QMAS',
-        arg_schema=asc.QUANTITY_MASS,
-        pipelines=(
-            Pipeline(
-                inputs=('Quantifiable',),
-                # outputs=('Quantifiable',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.QuantityVolume,
-        keyword='QVOL',
-        arg_schema=asc.QUANTITY_VOLUME,
-        pipelines=(
-            Pipeline(
-                inputs=('Quantifiable',),
-                # outputs=('Quantifiable',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.QuantityCount,
-        keyword='QCNT',
-        arg_schema=asc.QUANTITY_COUNT,
-        pipelines=(
-            Pipeline(
-                inputs=('Quantifiable',),
-                # outputs=('Quantifiable',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Time,
-        keyword='TIME',
-        arg_schema=asc.QUANTITY_TIME,
-        pipelines=(
-            Pipeline(
-                inputs=('Timable',),
-                # outputs=('Timable',),
-                process=None,
-            ),
-        ),
-    ),
-
-    #### Generative Tokens #####################################################
-
-    TokenInitDef(
-        klass=ci.Group,
-        keyword='GRUP',
-        arg_schema='tokenseq',
-        pipelines=(
-            Pipeline(
-                inputs=(),
-                # outputs=('Group',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.VariantTag,
-        keyword='VTAG',
-        arg_schema=asc.VARIANT_TAG_SET,
-        pipelines=(
-            Pipeline(
-                inputs=('Group',),
-                # outputs=('Group',),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Or,
-        keyword='ORGR',
-        arg_schema=asc.NONE,
-        pipelines=(
-            Pipeline(
-                inputs=('Alternatable', 'Group'),
-                # outputs=('Alternatable'),
-                process=None,
-            ),
-        ),
-    ),
-    TokenInitDef(
-        klass=ci.Repeat,
-        keyword='REPT',
-        arg_schema=asc.POS_INT,
-        pipelines=(
-            Pipeline(
-                inputs=('Group',),
-                # outputs=('Repetition',),
-                process=None,
-            ),
-        ),
-    ),
-
-})
-
-def klass__init__(self, value):
-    super().__init__()
-    self.value = value
-
-TokenDefs = frozenset({
-    TokenDef(
-        **tid._asdict(),
-        name=tid.klass.__name__,
-        schema=Schema({tid.keyword: tid.arg_schema}, required=True),
-    ) for tid in TokenInitDefs
-})
-
-TokenNameToDef = {k.name: k for k in TokenDefs}
-TokenKeywordToDef = {k.keyword: k for k in TokenDefs}
+# class Pipeline(typ.NamedTuple):
+#     inputs: typ.Sequence[ci.Token]
+#     # TODO: Should be more specific than Any.
+#     process: typ.Any
+#
+#
+# class TokenDef(typ.NamedTuple):
+#     # Class used to represent this token (data and interface)
+#     cls: typ.Type[ci.Token]
+#     # Token keyword, used in JSON
+#     keyword: str
+#     pipelines: typ.Sequence[Pipeline]
+#     json_arg_schema: voluptuous.Schema
+#     # fl_arg_grammar: modgrammar.Grammar
+#     # Character used as replacement for keyword
+#     sigil: typ.Optional[str] = None
+#
+#     @property
+#     def name(self) -> str:
+#         return self.cls.__name__
+#
+#
+# TokenDefs = frozenset({
+#
+#     # Concrete Tokens ##########################################################
+#
+#     TokenDef(
+#         cls=ci.Ingredient,
+#         keyword='INGR',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=(),
+#                 # outputs=(ci.Ingredient,),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Tool,
+#         keyword='TOOL',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=(),
+#                 # outputs=(ci.Tool,),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Vessel,
+#         keyword='VESS',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=(),
+#                 # outputs=(ci.Vessel,),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Appliance,
+#         keyword='APPL',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=(),
+#                 # outputs=(ci.Appliance,),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Environment,
+#         keyword='ENVR',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=(),
+#                 # outputs=(ci.Environment,),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#
+#     #### Operational Tokens ####################################################
+#
+#     TokenDef(
+#         cls=ci.Verb,
+#         keyword='VERB',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=(ci.Haz(ci.Foodstuff),),
+#                 # outputs=(ci.Haz(ci.Foodstuff),),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Add,
+#         keyword='ADDI',
+#         json_arg_schema=asc.NONE,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=(ci.Haz(ci.Foodstuff), ci.Haz(ci.Foodstuff),),
+#                 # outputs=(ci.Haz(ci.Foodstuff),),
+#                 process=None,
+#             ),
+#             Pipeline(
+#                 inputs=(ci.Haz(ci.Container), ci.Haz(ci.Foodstuff),),
+#                 # outputs=('System',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.AddTo,
+#         keyword='ADDT',
+#         json_arg_schema=asc.NONE,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=(ci.Haz(ci.Foodstuff), ci.Haz(ci.Foodstuff),),
+#                 # outputs=(ci.Haz(ci.Foodstuff),),
+#                 process=None,
+#             ),
+#             Pipeline(
+#                 inputs=(ci.Haz(ci.Foodstuff), ci.Haz(ci.Container),),
+#                 # outputs=('System',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Move,
+#         keyword='MOVE',
+#         json_arg_schema=asc.NONE,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('System', ci.Haz(ci.Foodstuff),),
+#                 # outputs=('Vessel', ci.Haz(ci.Foodstuff),),
+#                 process=None,
+#             ),
+#             Pipeline(
+#                 inputs=('System', ci.Haz(ci.Container),),
+#                 # outputs=('Vessel', 'System',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.MoveFrom,
+#         keyword='MOVF',
+#         json_arg_schema=asc.NONE,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=(ci.Haz(ci.Foodstuff), 'System',),
+#                 # outputs=('Vessel', ci.Haz(ci.Foodstuff),),
+#                 process=None,
+#             ),
+#             Pipeline(
+#                 inputs=(ci.Haz(ci.Container), 'System',),
+#                 # outputs=('Vessel', 'System',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Divide,
+#         keyword='DIVI',
+#         json_arg_schema=asc.NONE,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=(ci.Haz(ci.Foodstuff),),
+#                 # outputs=(ci.Haz(ci.Foodstuff), 'Food',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Reserve,
+#         keyword='RESV',
+#         json_arg_schema=asc.NONE,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=(ci.Haz(ci.Foodstuff),),
+#                 # outputs=(ci.Haz(ci.Foodstuff), 'Food',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Configure,
+#         keyword='CONF',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Has(Appliance)',),
+#                 # outputs=('Has(Appliance)',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Meld,
+#         keyword='MELD',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=(ci.Haz(ci.Container), ci.Tool,),
+#                 # outputs=(ci.Haz(ci.Container),),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Place,
+#         keyword='PLAC',
+#         json_arg_schema=asc.NONE,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Has(Environment)', 'Placeable',),
+#                 # outputs=('Process',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Remove,
+#         keyword='RMVE',
+#         json_arg_schema=asc.NONE,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Process',),
+#                 # outputs=('Placeable',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Bind,
+#         keyword='BIND',
+#         json_arg_schema=asc.NONE,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=(ci.Haz(ci.Foodstuff), ci.Tool,),
+#                 # outputs=(ci.Haz(ci.Foodstuff),),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Discard,
+#         keyword='DISC',
+#         json_arg_schema=asc.NONE,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Has(Mixture)',),
+#                 # outputs=(),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Empty,
+#         keyword='EMPT',
+#         json_arg_schema=asc.NONE,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('System',),
+#                 # outputs=('Vessel',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     # TODO: How does this work with multiple Tools?
+#     # TODO: Maybe have this work on two Verbs as input?
+#     TokenDef(
+#         cls=ci.Simultaneous,
+#         keyword='SIMU',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Has(Verb)',),
+#                 # outputs=('Has(Verb)',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.LookupGet,
+#         keyword='LGET',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=(),
+#                 # outputs=(),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#
+#     #### Metadata Tokens #######################################################
+#
+#     TokenDef(
+#         cls=ci.Condition,
+#         keyword='COND',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Has(Environment)',),
+#                 # outputs=('Has(Environment)',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Modifier,
+#         keyword='MODI',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Modifiable',),
+#                 # outputs=('Modifiable',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Annotation,
+#         keyword='ANNO',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Annotatable',),
+#                 # outputs=('Annotatable',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Photo,
+#         keyword='PHOT',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Photoable',),
+#                 # outputs=('Photoable',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.LookupSet,
+#         keyword='LSET',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Lookupable',),
+#                 # outputs=('Lookupable',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Fraction,
+#         keyword='FRAC',
+#         json_arg_schema=asc.FRACTION,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Divisor',),
+#                 # outputs=('Divisor',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Pseudoselect,
+#         keyword='PSEU',
+#         json_arg_schema=asc.STRING,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Divisor',),
+#                 # outputs=('Divisor',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.QuantityMass,
+#         keyword='QMAS',
+#         json_arg_schema=asc.QUANTITY_MASS,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Quantifiable',),
+#                 # outputs=('Quantifiable',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.QuantityVolume,
+#         keyword='QVOL',
+#         json_arg_schema=asc.QUANTITY_VOLUME,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Quantifiable',),
+#                 # outputs=('Quantifiable',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.QuantityCount,
+#         keyword='QCNT',
+#         json_arg_schema=asc.QUANTITY_COUNT,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Quantifiable',),
+#                 # outputs=('Quantifiable',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#     TokenDef(
+#         cls=ci.Time,
+#         keyword='TIME',
+#         json_arg_schema=asc.QUANTITY_TIME,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Timable',),
+#                 # outputs=('Timable',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#
+#     #### Generative Tokens #####################################################
+#
+#     # TokenDef(
+#     #     cls=ci.Group,
+#     #     keyword='GRUP',
+#     #     json_arg_schema='tokenseq',
+#     #     pipelines=(
+#     #         Pipeline(
+#     #             inputs=(),
+#     #             # outputs=('Group',),
+#     #             process=None,
+#     #         ),
+#     #     ),
+#     # ),
+#     # TokenDef(
+#     #     cls=ci.VariantTag,
+#     #     keyword='VTAG',
+#     #     json_arg_schema=asc.VARIANT_TAG_SET,
+#     #     pipelines=(
+#     #         Pipeline(
+#     #             inputs=('Group',),
+#     #             # outputs=('Group',),
+#     #             process=None,
+#     #         ),
+#     #     ),
+#     # ),
+#     # TokenDef(
+#     #     cls=ci.Or,
+#     #     keyword='ORGR',
+#     #     json_arg_schema=asc.NONE,
+#     #     pipelines=(
+#     #         Pipeline(
+#     #             inputs=('Alternatable', 'Group'),
+#     #             # outputs=('Alternatable'),
+#     #             process=None,
+#     #         ),
+#     #     ),
+#     # ),
+#     TokenDef(
+#         cls=ci.Repeat,
+#         keyword='REPT',
+#         json_arg_schema=asc.POS_INT,
+#         pipelines=(
+#             Pipeline(
+#                 inputs=('Group',),
+#                 # outputs=('Repetition',),
+#                 process=None,
+#             ),
+#         ),
+#     ),
+#
+# })
+#
+# TokenNameToDef = {k.name: k for k in TokenDefs}
+# TokenKeywordToDef = {k.keyword: k for k in TokenDefs}

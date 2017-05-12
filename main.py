@@ -388,13 +388,14 @@ def do_stuff():
         # graph.write_png(f'{token_path_key}.png')
 
         count = 0
+        choice_seqs: typ.List[par.SlotFilterChoiceSequence] = []
         for nodule_walk, stack_walk, choice_seq in par.yield_valid_nodule_walks(nodule_edge_map=nodule_edge_map
                                                                                 , start_nodule=start_nodule
                                                                                 , close_nodule=close_nodule
                                                                                 ):
-            allowed_slots = par.get_allowed_slots(slot_filter_stack_walk=stack_walk)
+            choice_seqs.append(choice_seq)
             print(f'Choice Sequence: {str(choice_seq)}')
-            print(f'Allowed Slots: {str(allowed_slots)}')
+            # print(f'Allowed Slots: {str(allowed_slots)}')
 
             last_nodule: typ.Optional[par.Nodule] = None
             for nodule, slot_filter_stack in zip(nodule_walk, stack_walk):
@@ -407,13 +408,38 @@ def do_stuff():
 
             count += 1
 
+            print(''.join(par.get_token_sequence(nodule_edge_map=nodule_edge_map, nodule_walk=nodule_walk)))
+
             print('-' * 80)
+
+        unique_choice_sets = set(choice_seqs)
+        print(f'Number of Choice Seqs: {len(choice_seqs)}')
+        print(f'Number of Unique Choice Seqs: {len(unique_choice_sets)}')
+        print(f'Unique Choice Sets:\n{pprint.pformat(sorted(unique_choice_sets))}')
 
         print(f'Number of Paths: {count}')
 
         print('=' * 80)
 
-lp = line_profiler.LineProfiler()
-lp_wrapper = lp(do_stuff)
-lp_wrapper()
-lp.print_stats()
+# lp = line_profiler.LineProfiler()
+# lp_wrapper = lp(do_stuff)
+# lp_wrapper()
+# lp.print_stats()
+
+import cheffu.argument_schema
+import cheffu.defs
+import cheffu.grammars
+import cheffu.interfaces
+import cheffu.parallel
+import cheffu.slot_filter
+import cheffu.interfaces as chi
+import cheffu.sample_recipes as samples
+import pprint
+
+import voluptuous as vp
+
+recipe = samples.SampleRecipes['Magic Mushroom Powder']
+procedure = recipe['procedure']
+
+pprint.pprint(procedure)
+pprint.pprint(chi.process(procedure))

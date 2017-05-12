@@ -1,0 +1,117 @@
+VESS pot
+INGR water <ADDI
+ENVR stove PREC high
+PLAC> VERB boil
+QVOL 1_1/4 cup
+
+VESS bowl
+INGR chamomile tea QCNT 16 bag
+<ADDI
+
+ADDI> VERB steep TIME 8...10 min
+
+DIVI strain PSEU used tea
+SIMU squeeze
+DISC
+
+ENVR room temperature
+PLAC>
+
+TSET glaze_tea DIVI PART +-
+
+TSET batter_tea DIVI PART ++-
+TSET batter_tea DIVI PART +-
+TSET batter_tea
+
+VESS bowl, medium
+INGR flour, all-purpose QVOL 2 cup
+<ADDI
+
+INGR baking powder QVOL 1 Tbsp
+<ADDI
+
+INGR salt QVOL 3/4 tsp
+<ADDI
+
+TOOL spoon BIND
+VERB mix
+
+TSET flour_mixture DIVI PART ++-
+TSET flour_mixture DIVI PART +-
+TSET flour_mixture
+
+APPL stand mixer
+
+INGR butter, unsalted QCNT 2_1/2 stick
+<ADDI
+INGR sugar, granulated QVOL 1_1/2 cup
+<ADDI
+
+INGR lemon
+TOOL zester BIND
+VERB zest (TODO: How to use both lemon and zest?)
+QVOL 2 tsp
+<ADDI
+
+CONF medium speed
+VERB beat TIME 2 min UNTL light and fluffy
+
+{
+    INGR egg, large QCNT 1 whole
+    <ADDI SIMU beat, well
+} * 6
+
+CONF low speed
+
+{
+    TGET flour_mixture
+    <ADDI VERB mix
+    TGET batter_tea
+    <ADDI VERB mix
+} * 3
+
+TOOL spatula, rubber
+BIND VERB scrape sides; as needed
+
+INGR vanilla extract, pure QVOL 2 tsp
+<ADDI VERB beat; just to combine
+
+VESS loaf pan @ 9x5 inch
+INGR baking spray
+<ADDI spray, lightly
+
+ADDI>
+
+ENVR oven PREC adjust rack, middle PREC preheat
+MODI 350 degrees F (TODO: Better way to denote this info? Should really be a quantity)
+PLAC>
+VERB bake
+TIME 50...60 min
+UNTL tester comes out clean when inserted (TODO: Cleaner way of handling this? Maybe a way to indicate a test?)
+
+REMO
+VERB cool TIME 15 min
+
+VESS cooling rack
+ADDI> invert onto
+VERB cool, completely TIME 60~ min
+
+TOOL skewer
+BIND VERB poke holes
+
+VESS saucepan, small
+INGR honey QVOL 1/3 cup
+<ADDI
+
+TGET glaze_tea
+<ADDI
+
+ENVR stove PREC medium
+PLAC>
+
+VERB simmer UNTL homogenous
+REMO
+
+VERB cool TIME 5 min
+
+<ADDI pour over
