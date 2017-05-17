@@ -1,5 +1,9 @@
 import modgrammar as mg
+import modgrammar.extras as mgex
 import fractions
+import itertools
+
+import cheffu.slot_filter as sf
 
 ALPHA_CHARS = "A-Za-z"
 NZ_DIGIT_CHARS = "1-9"
@@ -10,15 +14,25 @@ STRING_CHARS = PHRASE_CHARS + DIGIT_CHARS + "[]#."
 PARTITION_A_PORTION_FLAG = '+'
 PARTITION_B_PORTION_FLAG = '-'
 
-MIXED_NUM_SEPERATOR = '_'
+MIXED_NUM_SEPARATOR = '_'
 FRACTION_SEPARATOR = '/'
 DECIMAL_SEPARATOR = '.'
 
 QUANTITY_RANGE_SEPARATOR = '~'
 QUANTITY_RANGE_APPROX_FLAG = '~'
 
+SEQUENCE_ITEM_SEPARATOR = ','
+RANGE_SEPARATOR = '...'
+
+SLOT_FILTER_ALLOW_ALL_KEYWORD = 'ANY'
+SLOT_FILTER_BLOCK_ALL_KEYWORD = 'NONE'
+
+VARIANT_SLOT_SIGIL = '#'
+VARIANT_SLOT_INVERT_SIGIL = '!'
+
 grammar_whitespace_mode = 'optional'
 
+# Primitives
 
 class NonNegInteger(mg.Grammar):
     grammar = mg.WORD(DIGIT_CHARS)
@@ -52,7 +66,7 @@ class PosFraction(mg.Grammar):
 
 class NonNegMixedNum(mg.Grammar):
     grammar_whitespace_mode = 'explicit'
-    grammar = (NonNegInteger, MIXED_NUM_SEPERATOR, NonNegFraction)
+    grammar = (NonNegInteger, MIXED_NUM_SEPARATOR, NonNegFraction)
 
     def value(self):
         return self[0].value() + self[2].value()
@@ -61,12 +75,12 @@ class NonNegMixedNum(mg.Grammar):
 class PosMixedNum(mg.Grammar):
     grammar_whitespace_mode = 'explicit'
     grammar = mg.OR(
-        (PosInteger, MIXED_NUM_SEPERATOR, NonNegFraction),
-        (NonNegInteger, MIXED_NUM_SEPERATOR, PosFraction),
+        (PosInteger, MIXED_NUM_SEPARATOR, NonNegFraction),
+        (NonNegInteger, MIXED_NUM_SEPARATOR, PosFraction),
     )
 
     def value(self):
-        return self[0].value() + self[2].value()
+        return self[0][0].value() + self[0][2].value()
 
 
 class NonNegDecimal(mg.Grammar):
@@ -88,29 +102,24 @@ class PosDecimal(mg.Grammar):
         return fractions.Fraction(self.string)
 
 
-class Phrase(mg.Grammar):
-    grammar = mg.WORD(PHRASE_CHARS)
+class NonNegNumber(mg.Grammar):
+    grammar = mg.OR(NonNegMixedNum, NonNegFraction, NonNegDecimal, NonNegInteger)
 
     def value(self):
-        return self.string.strip()
+        return self[0].value()
 
 
-class String(mg.Grammar):
-    grammar = (
-                  mg.WORD(STRING_CHARS),
-              )
+class PosNumber(mg.Grammar):
+    grammar = mg.OR(PosMixedNum, PosFraction, PosDecimal, PosInteger)
 
     def value(self):
-        return self.string.strip()
+        return self[0].value()
 
 
 class Partition(mg.Grammar):
     grammar_whitespace_mode = 'explicit'
 
-    grammar = (
-                  mg.ONE_OR_MORE(PARTITION_A_PORTION_FLAG),
-                  mg.ONE_OR_MORE(PARTITION_B_PORTION_FLAG),
-              )
+    grammar = (mg.ONE_OR_MORE(PARTITION_A_PORTION_FLAG), mg.ONE_OR_MORE(PARTITION_B_PORTION_FLAG))
 
     def value(self):
         num = len(self[0].string)
@@ -118,26 +127,99 @@ class Partition(mg.Grammar):
         return fractions.Fraction(num, den)
 
 
-class PosQuantity(mg.Grammar):
-    grammar = (
-                  mg.OR(
-                      PosFraction,
-                      PosDecimal,
-                      PosInteger,
-                  ),
-              )
+# Slot Filters
+
+class SlotIndex(mg.Grammar):
+    grammar = NonNegInteger
 
     def value(self):
         return self[0].value()
 
+    def yield_value(self):
+        yield self.value()
 
-class NonNegIntegerSeq(mg.Grammar):
+
+class SlotIndexRange(mg.Grammar):
+    grammar_whitespace_mode = 'explicit'
     grammar = (
-                  mg.LIST_OF(NonNegInteger)
-              )
+        SlotIndex,
+        RANGE_SEPARATOR,
+        SlotIndex,
+    )
 
     def value(self):
-        return set(s.value() for s in self[0])
+        return frozenset(range(self[0].value(), self[2].value() + 1))
+
+    def yield_value(self):
+        yield from self.value()
+
+
+class SlotIndexSet(mg.Grammar):
+    grammar = mg.LIST_OF(mg.OR(SlotIndex, SlotIndexRange), sep=SEQUENCE_ITEM_SEPARATOR, min=1)
+
+    def value(self):
+        return frozenset(self.yield_value())
+
+    def yield_value(self):
+        yield from itertools.chain.from_iterable(
+            s.yield_value() for s in self[0] if s.string != SEQUENCE_ITEM_SEPARATOR
+        )
+
+
+class SlotFilterAllowAll(mg.Grammar):
+    grammar = SLOT_FILTER_ALLOW_ALL_KEYWORD
+
+    @staticmethod
+    def value():
+        return sf.ALLOW_ALL
+
+
+class SlotFilterBlockAll(mg.Grammar):
+    grammar = SLOT_FILTER_BLOCK_ALL_KEYWORD
+
+    @staticmethod
+    def value():
+        return sf.BLOCK_ALL
+
+
+class SlotFilterCustom(mg.Grammar):
+    grammar = (mg.OPTIONAL(VARIANT_SLOT_INVERT_SIGIL), SlotIndexSet)
+
+    def value(self):
+        if self[0]:
+            sf_gen = sf.make_black_list
+        else:
+            sf_gen = sf.make_white_list
+
+        return sf_gen(*self[1].yield_value())
+
+
+class VariantSlotFilter(mg.Grammar):
+    grammar = (
+        VARIANT_SLOT_SIGIL,
+        mg.OR(
+            SlotFilterAllowAll,
+            SlotFilterBlockAll,
+            SlotFilterCustom,
+        ),
+    )
+
+    def value(self):
+        return self[1].value()
+
+
+class Phrase(mg.Grammar):
+    grammar = mgex.QuotedString
+
+    def value(self):
+        return self.string.strip()
+
+
+class String(mg.Grammar):
+    grammar = mgex.QuotedString
+
+    def value(self):
+        return self.string.strip()
 
 
 class Quantity(mg.Grammar):
@@ -163,17 +245,17 @@ class Time(mg.Grammar):
     }
 
     grammar = (
-                  mg.OPTIONAL(QUANTITY_RANGE_APPROX_FLAG),
-                  PosQuantity,
-                  mg.OPTIONAL(
+        mg.OPTIONAL(QUANTITY_RANGE_APPROX_FLAG),
+        PosNumber,
+        mg.OPTIONAL(
                       mg.GRAMMAR(
                           QUANTITY_RANGE_SEPARATOR,
-                          PosQuantity,
+                          PosNumber,
                       ),
                   ),
-                  mg.OPTIONAL(QUANTITY_RANGE_APPROX_FLAG),
-                  mg.WHITESPACE,
-                  mg.OR(
+        mg.OPTIONAL(QUANTITY_RANGE_APPROX_FLAG),
+        mg.WHITESPACE,
+        mg.OR(
                       *unit_lookup.keys()
                   ),
               )

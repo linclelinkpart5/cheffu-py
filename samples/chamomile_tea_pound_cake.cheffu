@@ -54,6 +54,7 @@ QVOL 2 tsp
 <ADDI
 
 CONF medium speed
+(TODO: Look into replacing UNTL with ANNO)
 VERB beat TIME 2 min UNTL light and fluffy
 
 {
@@ -82,8 +83,8 @@ INGR baking spray
 
 ADDI>
 
-ENVR oven PREC adjust rack, middle PREC preheat
-MODI 350 degrees F (TODO: Better way to denote this info? Should really be a quantity)
+(TODO: Better way to denote this info? Should really be a quantity)
+ENVR oven PREC adjust rack, middle PREC preheat, 350 degrees F
 PLAC>
 VERB bake
 TIME 50...60 min

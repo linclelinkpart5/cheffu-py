@@ -3,7 +3,7 @@ import unittest
 
 import voluptuous
 
-import argument_schema
+import cheffu.argument_schema
 
 class TestArgumentSchema(unittest.TestCase):
     VALID_STRINGS = (
