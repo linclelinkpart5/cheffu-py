@@ -1,7 +1,8 @@
 import modgrammar as mg
-import modgrammar.extras as mgex
 import fractions
 import itertools
+import typing as typ
+import types
 
 import cheffu.slot_filter as sf
 
@@ -154,7 +155,7 @@ class SlotIndexRange(mg.Grammar):
         yield from self.value()
 
 
-class SlotIndexSet(mg.Grammar):
+class SlotIndices(mg.Grammar):
     grammar = mg.LIST_OF(mg.OR(SlotIndex, SlotIndexRange), sep=SEQUENCE_ITEM_SEPARATOR, min=1)
 
     def value(self):
@@ -183,7 +184,7 @@ class SlotFilterBlockAll(mg.Grammar):
 
 
 class SlotFilterCustom(mg.Grammar):
-    grammar = (mg.OPTIONAL(VARIANT_SLOT_INVERT_SIGIL), SlotIndexSet)
+    grammar = (mg.OPTIONAL(VARIANT_SLOT_INVERT_SIGIL), SlotIndices)
 
     def value(self):
         if self[0]:
@@ -208,15 +209,36 @@ class VariantSlotFilter(mg.Grammar):
         return self[1].value()
 
 
+# import cheffu.interfaces as chin
+# def make_grammar_for_token(token_interface: typ.Type[chin.Token]) -> typ.Type[mg.Grammar]:
+#     keyword: str = token_interface.keyword
+#     arg_grammar: mg.Grammar = token_interface.arg_grammar
+#     cls_dict = {
+#         'grammar_whitespace_mode': 'optional',
+#         'grammar': (mg.LITERAL(keyword), arg_grammar),
+#     }
+#
+#     ret: typ.Type[mg.Grammar] = types.new_class(keyword, (mg.Grammar,), {}, lambda ns: ns.update(cls_dict))
+#     return ret
+#
+#
+# TokenKeywordToGrammar: typ.Mapping[str, typ.Type[mg.Grammar]] = \
+#     {ti.keyword: make_grammar_for_token(ti) for ti in chin.Token.get_definable_tokens()}
+#
+#
+# print(TokenKeywordToGrammar)
+
+
+
 class Phrase(mg.Grammar):
-    grammar = mgex.QuotedString
+    grammar = mg.WORD(PHRASE_CHARS)
 
     def value(self):
         return self.string.strip()
 
 
 class String(mg.Grammar):
-    grammar = mgex.QuotedString
+    grammar = mg.WORD(STRING_CHARS)
 
     def value(self):
         return self.string.strip()

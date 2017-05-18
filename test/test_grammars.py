@@ -2,13 +2,38 @@ import fractions
 import decimal
 import unittest
 import itertools
-import collections
+import typing as typ
 
 import cheffu.grammars as gr
 import cheffu.slot_filter as sf
 
 
-SFRange = collections.namedtuple('SFRange', ('a', 'b'))
+SIRange = typ.NamedTuple('SIRange', (('a', sf.SlotIndex), ('b', sf.SlotIndex)))
+SIST = typ.Sequence[typ.Union[sf.SlotIndex, SIRange]]
+
+
+def slot_index_set_tuple_to_str(sist: SIST):
+    strs = []
+    for i in sist:
+        if isinstance(i, SIRange):
+            i = typ.cast(SIRange, i)
+            strs.append('{}{}{}'.format(i.a, gr.RANGE_SEPARATOR, i.b))
+        else:
+            strs.append(str(i))
+
+    return gr.SEQUENCE_ITEM_SEPARATOR.join(strs)
+
+
+def slot_index_set_tuple_to_fset(sist: SIST):
+    vals = set()
+    for i in sist:
+        if isinstance(i, SIRange):
+            i = typ.cast(SIRange, i)
+            vals.update(range(i.a, i.b + 1))
+        else:
+            vals.add(i)
+
+    return frozenset(vals)
 
 
 class TestGrammars(unittest.TestCase):
@@ -47,6 +72,28 @@ class TestGrammars(unittest.TestCase):
     VALID_SLOT_INDEX_RANGES = frozenset(
         (i, j) for i, j in itertools.product(VALID_SLOT_INDICES, VALID_SLOT_INDICES)
     )
+
+    VALID_SLOT_INDICES_TUPLES = frozenset({
+        (0, SIRange(1, 3), 4),
+        (SIRange(0, 2), SIRange(4, 6)),
+        tuple(range(6)),
+        (1, 2, 3, 5, 7, 11, 13),
+        (27,),
+        (SIRange(0, 99),),
+        (SIRange(99, 0),),
+        (SIRange(1, 1),),
+        (SIRange(0, 3), SIRange(2, 7), SIRange(6, 9)),
+    })
+
+    VALID_PHRASES = frozenset({
+        'onion',
+        'chop',
+        'egg',
+        'chicken stock',
+        'firmly',
+        'stirring often',
+        'roll',
+    })
 
     VALID_POS_INTEGER_CONVS = {
         str(i): i for i in VALID_POS_INTEGERS
@@ -101,19 +148,8 @@ class TestGrammars(unittest.TestCase):
         '{}{}{}'.format(i, gr.RANGE_SEPARATOR, j): frozenset(range(i, j + 1)) for i, j in VALID_SLOT_INDEX_RANGES
     }
 
-    VALID_SLOT_INDEX_SET_CONVS = {
-        '0{sep} 1{sep} 4{rng}7{sep}3'.format(sep=gr.SEQUENCE_ITEM_SEPARATOR, rng=gr.RANGE_SEPARATOR):
-            frozenset({0, 1, 3, 4, 5, 6, 7}),
-        '1{rng}5{sep}4{rng}7'.format(sep=gr.SEQUENCE_ITEM_SEPARATOR, rng=gr.RANGE_SEPARATOR):
-            frozenset({1, 2, 3, 4, 5, 6, 7}),
-        '0 {sep} 1  {sep}2   {sep}7'.format(sep=gr.SEQUENCE_ITEM_SEPARATOR, rng=gr.RANGE_SEPARATOR):
-            frozenset({0, 1, 2, 7}),
-        ' 27'.format(sep=gr.SEQUENCE_ITEM_SEPARATOR, rng=gr.RANGE_SEPARATOR):
-            frozenset({27}),
-        ' 0{rng}99'.format(sep=gr.SEQUENCE_ITEM_SEPARATOR, rng=gr.RANGE_SEPARATOR):
-            frozenset(range(0, 100)),
-        '99{rng}0'.format(sep=gr.SEQUENCE_ITEM_SEPARATOR, rng=gr.RANGE_SEPARATOR):
-            frozenset(),
+    VALID_SLOT_INDICES_CONVS = {
+        slot_index_set_tuple_to_str(sist): slot_index_set_tuple_to_fset(sist) for sist in VALID_SLOT_INDICES_TUPLES
     }
 
     VALID_SLOT_FILTER_ALLOW_ALL_CONVS = {
@@ -122,6 +158,18 @@ class TestGrammars(unittest.TestCase):
 
     VALID_SLOT_FILTER_BLOCK_ALL_CONVS = {
         gr.SLOT_FILTER_BLOCK_ALL_KEYWORD: sf.BLOCK_ALL,
+    }
+
+    VALID_SLOT_FILTER_CUSTOM_CONVS = {
+        '{}{}'.format(str_flag, text): func(*si_set) for (str_flag, func), (text, si_set) in itertools.product(((gr.VARIANT_SLOT_INVERT_SIGIL, sf.make_black_list), ('', sf.make_white_list)), VALID_SLOT_INDICES_CONVS.items())
+    }
+
+    VALID_VARIANT_SLOT_FILTER_CONVS = {
+        '{}{}'.format(gr.VARIANT_SLOT_SIGIL, k): sf for k, sf in itertools.chain(
+            VALID_SLOT_FILTER_ALLOW_ALL_CONVS.items(),
+            VALID_SLOT_FILTER_BLOCK_ALL_CONVS.items(),
+            VALID_SLOT_FILTER_CUSTOM_CONVS.items(),
+        )
     }
 
     def test_non_neg_integer(self):
@@ -215,10 +263,10 @@ class TestGrammars(unittest.TestCase):
             va = p.parse_string(k).value()
             self.assertEqual(va, ve)
 
-    def test_slot_index_set(self):
-        p = gr.SlotIndexSet.parser()
+    def test_slot_indices(self):
+        p = gr.SlotIndices.parser()
 
-        for k, ve in self.VALID_SLOT_INDEX_SET_CONVS.items():
+        for k, ve in self.VALID_SLOT_INDICES_CONVS.items():
             va = p.parse_string(k).value()
             self.assertEqual(va, ve)
 
@@ -233,6 +281,20 @@ class TestGrammars(unittest.TestCase):
         p = gr.SlotFilterBlockAll.parser()
 
         for k, ve in self.VALID_SLOT_FILTER_BLOCK_ALL_CONVS.items():
+            va = p.parse_string(k).value()
+            self.assertEqual(va, ve)
+
+    def test_slot_filter_custom(self):
+        p = gr.SlotFilterCustom.parser()
+
+        for k, ve in self.VALID_SLOT_FILTER_CUSTOM_CONVS.items():
+            va = p.parse_string(k).value()
+            self.assertEqual(va, ve)
+
+    def test_variant_slot_filter(self):
+        p = gr.VariantSlotFilter.parser()
+
+        for k, ve in self.VALID_VARIANT_SLOT_FILTER_CONVS.items():
             va = p.parse_string(k).value()
             self.assertEqual(va, ve)
 
