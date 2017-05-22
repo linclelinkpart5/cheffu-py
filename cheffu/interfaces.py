@@ -10,14 +10,7 @@ import voluptuous.humanize as vph
 
 import cheffu.grammars as cgrm
 import cheffu.argument_schema as asc
-
-
-def process_argument(arg_vp_schema: vp.Schema, argument: typ.Any) -> typ.Any:
-    return arg_vp_schema(argument)
-
-
-def process_token_dict(vp_schema: vp.Schema, token_dict: typ.Mapping[str, typ.Any]) -> typ.Mapping[str, typ.Any]:
-    return vp_schema(token_dict)
+import cheffu.parallel as par
 
 
 class Priority(enum.Enum):
@@ -55,8 +48,11 @@ class Token:
 
         yield from spelunk(cls)
 
-    def process_token_argument(self, token_argument: typ.Any) -> None:
-        self.data = vph.validate_with_humanized_errors(token_argument, self.arg_vp_schema)
+    def process_stack(self, stack: typ.List['Token']):
+        raise NotImplemented()
+
+    def process_graph(self, nodule_edge_map: par.NoduleEdgeMap, current_nodule: par.Nodule):
+        raise NotImplemented()
 
 
 class Modifiable(Token,):
@@ -107,6 +103,7 @@ class Taggable(Token,):
         return tuple(self._tags.keys())
 
 
+# TODO: Not all Concretes should be Modifiable/Annotatable (e.g. Systems)
 class Concrete(Modifiable, Annotatable, Photoable, Taggable,):
     def __init__(self):
         super().__init__()

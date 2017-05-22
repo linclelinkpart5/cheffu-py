@@ -231,7 +231,7 @@ SampleRecipes = {
             # The Until token provide an alternate way of providing a stopping condition instead of/in addition to Time
             { 'UNTL': 'light and fluffy', },
 
-            # The For-Count token executs a Group multiple times sequentially
+            # The For-Count token executes a Group multiple times sequentially
             [
                 { 'INGR': 'egg', },
                 { 'MODI': 'large', },
