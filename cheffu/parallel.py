@@ -19,13 +19,12 @@ NoduleGen = typ.Callable[[], Nodule]
 
 Token = typ.NewType('Token', dict)
 AltSequence = typ.Sequence['FilteredAlt']
-PathItem = typ.Union[Token, AltSequence]
-TokenPath = typ.Sequence[PathItem]
+TokenPath = typ.Sequence[typ.Union[Token, AltSequence]]
 
-FilteredAlt = typ.NamedTuple('FilteredAlt', (('items', TokenPath), ('slot_filter', sf.SlotFilter)))
-UnfilteredAlt = functools.partial(FilteredAlt, slot_filter=sf.ALLOW_ALL)
-FilteredNull = functools.partial(FilteredAlt, items=())
-UnfilteredNull = functools.partial(UnfilteredAlt, items=())
+
+class FilteredAlt(typ.NamedTuple):
+    items: TokenPath = ()
+    slot_filter: sf.SlotFilter = sf.ALLOW_ALL
 
 SlotFilterStack = typ.Sequence[sf.SlotFilter]
 
@@ -34,26 +33,38 @@ class StackDirection(enum.Enum):
     PUSH = '+'
     POP = '-'
 
-# Need to separate slot filter in order to parse and view
-id_gen = itertools.count()
-SlotFilterStackOperation = typ.NamedTuple('SlotFilterStackOperation',
-                                          (('direction', StackDirection), ('slot_filter', sf.SlotFilter))
-                                          )
+
+# We need a separate command and slot filter (instead of just a lambda) in order to parse and view.
+class SlotFilterStackOperation(typ.NamedTuple):
+    direction: StackDirection
+    slot_filter: sf.SlotFilter
+
+
 SlotFilterStackCommand = typ.Optional[SlotFilterStackOperation]
 
-NoduleSkewer = typ.NamedTuple('NoduleSkewer', (('tokens', typ.Sequence[Token]), ('command', SlotFilterStackCommand)))
+
+class NoduleSkewer(typ.NamedTuple):
+    tokens: typ.Sequence[Token] = ()
+    start_command: SlotFilterStackCommand = None
+    close_command: SlotFilterStackCommand = None
+
+
+NoduleSkewerSequence = typ.MutableSequence[NoduleSkewer]
 
 NoduleEdgeMap = typ.MutableMapping[
     Nodule,
-    typ.MutableMapping[
+    typ.DefaultDict[
         Nodule,
-        NoduleSkewer,
+        NoduleSkewerSequence,
     ],
 ]
 
 
 def normalize_alt_sequence(alt_sequence: AltSequence) -> AltSequence:
-    # Calculate the value of the else-filter
+    """Processes an alt sequence to remove multiple null alts, and to ensure that the union of all of its
+    contained slot filters allows all slots (i.e. is an allow-all filter).
+    """
+    # Calculate the value of the else-filter, which contains all slots not explicitly allowed in the alt sequence.
     coverage_filter = functools.reduce(
         sf.union,
         (alt.slot_filter for alt in alt_sequence),
@@ -61,31 +72,35 @@ def normalize_alt_sequence(alt_sequence: AltSequence) -> AltSequence:
     )
     else_filter = sf.invert(coverage_filter)
 
-    # If else-filter is not block-all, append a null branch with the else-filter to filtered alts
+    # If else-filter is not block-all, append a null branch with the else-filter to filtered alts.
+    # This provides an "escape hatch" for a case when a slot does not match any provided filter.
     if else_filter != sf.BLOCK_ALL:
-        alt_sequence += (FilteredNull(slot_filter=else_filter),)
+        alt_sequence += (FilteredAlt(slot_filter=else_filter),)
 
-    # From filtered alts, drop any that have a block-all filter
+    # From filtered alts, drop any that have a block-all filter.
     alt_sequence = tuple(filtered_alt for filtered_alt in alt_sequence if filtered_alt.slot_filter != sf.BLOCK_ALL)
 
-    # Coalesce null branches into a single one
+    # Coalesce any null alts into a single null alt.
     # TODO: If possible, coalesce non-null branches as well, but much trickier
     null_alts = tuple(alt for alt in alt_sequence if not alt.items)
     alt_sequence = tuple(alt for alt in alt_sequence if alt.items)
 
-    # Coalescing happens by combining the filters into one
+    # Coalescing happens by union-ing the corresponding slot filters into one.
     if null_alts:
         null_filter = sf.BLOCK_ALL
         for null_alt in null_alts:
             null_filter = sf.union(null_filter, null_alt.slot_filter)
 
-        alt_sequence += (FilteredNull(slot_filter=null_filter),)
+        alt_sequence += (FilteredAlt(slot_filter=null_filter),)
 
-    # Sanity checks
-    # There should be at most one null branch
-    assert(sum(1 if not alt.items else 0 for alt in alt_sequence) <= 1)
-    # The union of all filters should equal an allow-all filter
-    assert(functools.reduce(sf.union, (alt.slot_filter for alt in alt_sequence), sf.BLOCK_ALL) == sf.ALLOW_ALL)
+    # Sanity check: The alt sequence should not be empty.
+    assert alt_sequence
+
+    # Sanity check: There should be at most one null branch.
+    assert sum(1 if not alt.items else 0 for alt in alt_sequence) <= 1
+
+    # Sanity check: The union of all filters should equal an allow-all filter.
+    assert functools.reduce(sf.union, (alt.slot_filter for alt in alt_sequence), sf.BLOCK_ALL) == sf.ALLOW_ALL
 
     return alt_sequence
 
@@ -96,6 +111,8 @@ AllowedSlotIndices = typ.AbstractSet[sf.SlotIndex]
 def generate_allowed_slot_indices_from_alt(*
                                            , alt_sequence: AltSequence
                                            ) -> AllowedSlotIndices:
+    """Given an alt sequence, finds the minimal "interesting" set of slot indices referenced.
+    """
     interesting_slot_indices: typ.Set[sf.SlotIndex] = set()
     for alt in alt_sequence:
         slot_filter: sf.SlotFilter = alt.slot_filter
@@ -120,17 +137,26 @@ def generate_allowed_slot_indices_from_alt(*
     return frozenset(interesting_slot_indices)
 
 
-def connect(*,
-            start_nodule: Nodule,
-            close_nodule: Nodule,
-            nodule_edge_map: NoduleEdgeMap,
-            encountered_tokens: typ.Sequence[Token],
-            slot_filter_stack_command: SlotFilterStackCommand
+def connect(*
+            , start_nodule: Nodule
+            , close_nodule: Nodule
+            , nodule_edge_map: NoduleEdgeMap
+            , encountered_tokens: typ.Sequence[Token]
+            , start_slot_filter_stack_command: SlotFilterStackCommand
+            , close_slot_filter_stack_command: SlotFilterStackCommand
             ) -> None:
+    """Connects two nodules together with an edge.
+    This edge will contain information about the tokens present on it, as well as the stack commands on start and close.
+    """
     logger.debug(f'Connecting nodule {start_nodule} to nodule {close_nodule}, '
                  f'containing {len(encountered_tokens)} token(s)')
-    nodule_skewer: NoduleSkewer = NoduleSkewer(tokens=encountered_tokens, command=slot_filter_stack_command)
-    nodule_edge_map[start_nodule][close_nodule] = nodule_skewer
+
+    nodule_skewer: NoduleSkewer = NoduleSkewer(tokens=encountered_tokens,
+                                               start_command=start_slot_filter_stack_command,
+                                               close_command=close_slot_filter_stack_command,
+                                               )
+
+    nodule_edge_map[start_nodule][close_nodule].append(nodule_skewer)
 
 
 def process_token_path(*
@@ -139,63 +165,73 @@ def process_token_path(*
                        , close_nodule: Nodule
                        , nodule_gen: NoduleGen
                        , nodule_edge_map: NoduleEdgeMap
-                       , slot_filter_stack_command: SlotFilterStackCommand
+                       , start_slot_filter_stack_command: SlotFilterStackCommand
+                       , close_slot_filter_stack_command: SlotFilterStackCommand
                        ) -> None:
-    # Keep track of the most recent parent nodule
+    # Keep track of the most recent parent nodule.
     curr_parent_nodule: Nodule = start_nodule
 
-    # Tokens encountered directly on this path
+    # Collect tokens encountered directly on this path.
     encountered_tokens: typ.MutableSequence[Token] = []
 
-    # Process each path item
+    # Process each path item.
     for path_item in token_path:
+        # TODO: See if there is a way to use type hint in subclass check.
+        # if isinstance(path_item, AltSequence):
         if isinstance(path_item, tuple):
+            # When an alt sequence is encountered:
+            #     1) New start and close nodules (NSN, NCN) are generated for the to-be-processed alt sequence.
+            #     2) The current skewer and list of encountered tokens is capped (use NSN).
+            #     3) Process the alt sequence, using NSN and NCN.
             alt_sequence: AltSequence = typ.cast(AltSequence, path_item)
 
-            # Create a new nodule, and close current skewer
-            new_nodule: Nodule = nodule_gen()
+            # Create new start and close nodules for the to-be-processed alt sequence.
+            alt_seq_start_nodule: Nodule = nodule_gen()
+            alt_seq_close_nodule: Nodule = nodule_gen()
+
+            # Capture current list of encountered tokens.
+            # Close off the current skewer by connecting to the new start nodule.
             connect(start_nodule=curr_parent_nodule,
-                    close_nodule=new_nodule,
+                    close_nodule=alt_seq_start_nodule,
                     nodule_edge_map=nodule_edge_map,
                     encountered_tokens=encountered_tokens,
-                    slot_filter_stack_command=slot_filter_stack_command,
+                    start_slot_filter_stack_command=start_slot_filter_stack_command,
+                    close_slot_filter_stack_command=None,
                     )
 
-            # We only want to put the stack command on the first skewer of a branch
-            if slot_filter_stack_command:
-                slot_filter_stack_command = None
+            # We only want to put the stack command on the first skewer of a branch.
+            if start_slot_filter_stack_command is not None:
+                start_slot_filter_stack_command = None
 
-            # Reset encountered tokens
+            # Reset list of encountered tokens.
             encountered_tokens = []
 
-            # Update current parent nodule
-            curr_parent_nodule = new_nodule
-
-            # Generate new close nodule for alts
-            alt_sequence_close_nodule: Nodule = nodule_gen()
-
-            # Process the alt sequence
+            # Process the alt sequence.
             process_alt_sequence(alt_sequence=alt_sequence,
-                                 start_nodule=curr_parent_nodule,
-                                 close_nodule=alt_sequence_close_nodule,
+                                 start_nodule=alt_seq_start_nodule,
+                                 close_nodule=alt_seq_close_nodule,
                                  nodule_gen=nodule_gen,
                                  nodule_edge_map=nodule_edge_map,
                                  )
 
-            # Update current parent nodule
-            curr_parent_nodule = alt_sequence_close_nodule
-        elif isinstance(path_item, str):
+            # Update current parent nodule.
+            curr_parent_nodule = alt_seq_close_nodule
+        # TODO: See if there is a way to use type hint in subclass check.
+        # elif isinstance(path_item, Token):
+        else:
             token: Token = typ.cast(Token, path_item)
 
             # Add to the list of encountered tokens
             encountered_tokens.append(token)
 
-    # Close the path by making an edge from the current parent nodule to the close nodule
+    # Close the path by making an edge from the current parent nodule to the close nodule.
+    # Note that the value of start slot filter stack command will be None if an alt sequence is processed before here.
     connect(start_nodule=curr_parent_nodule,
             close_nodule=close_nodule,
             nodule_edge_map=nodule_edge_map,
             encountered_tokens=encountered_tokens,
-            slot_filter_stack_command=slot_filter_stack_command,
+            start_slot_filter_stack_command=start_slot_filter_stack_command,
+            close_slot_filter_stack_command=close_slot_filter_stack_command,
             )
 
 
@@ -206,16 +242,15 @@ def process_alt_sequence(*
                          , nodule_gen: NoduleGen
                          , nodule_edge_map: NoduleEdgeMap
                          ):
-    # Normalize alt sequence
+    # Normalize alt sequence.
     alt_sequence = normalize_alt_sequence(alt_sequence)
-    assert alt_sequence, 'Alt sequence is empty'
 
-    # Process each alt
+    # For each alt in the alt sequence:
+    #     1) Extract slot filter.
+    #     2) Create slot filter stack commands for push and pop (SPSH, SPOP).
+    #     3) Process token path contained in alt using SPSH and SPOP.
     for alt in alt_sequence:
-        # Generate a new intermediate nodule
-        inter_nodule = nodule_gen()
-
-        # Unpack alt
+        # Unpack alt into components.
         token_path: TokenPath = alt.items
         slot_filter: sf.SlotFilter = alt.slot_filter
 
@@ -223,24 +258,16 @@ def process_alt_sequence(*
         slot_filter_stack_push = SlotFilterStackOperation(direction=StackDirection.PUSH, slot_filter=slot_filter)
         slot_filter_stack_pop = SlotFilterStackOperation(direction=StackDirection.POP, slot_filter=slot_filter)
 
-        # Process items as another token path, connecting them to intermediate nodule
-        # Remember to add a push command
+        # Process items as another token path.
+        # Remember to add a push command!
         process_token_path(token_path=token_path,
                            start_nodule=start_nodule,
-                           close_nodule=inter_nodule,  # NOTE!
+                           close_nodule=close_nodule,
                            nodule_gen=nodule_gen,
                            nodule_edge_map=nodule_edge_map,
-                           slot_filter_stack_command=slot_filter_stack_push,
+                           start_slot_filter_stack_command=slot_filter_stack_push,
+                           close_slot_filter_stack_command=slot_filter_stack_pop,
                            )
-
-        # Connect intermediate nodule to close nodule
-        # This section will never contain tokens, but will have a pop command
-        connect(start_nodule=inter_nodule,
-                close_nodule=close_nodule,
-                nodule_edge_map=nodule_edge_map,
-                encountered_tokens=[],
-                slot_filter_stack_command=slot_filter_stack_pop,
-                )
 
 
 def process(token_path: TokenPath, nodule_gen: NoduleGen=None):
@@ -251,21 +278,26 @@ def process(token_path: TokenPath, nodule_gen: NoduleGen=None):
         def nodule_gen():
             return next(counter)
 
-    # Create start and close nodules
+    # Create start and close nodules.
     start_nodule = nodule_gen()
     logger.debug(f'Generated start nodule = {start_nodule}')
     close_nodule = nodule_gen()
     logger.debug(f'Generated close nodule = {close_nodule}')
 
-    # Mapping to store edge information
-    nodule_edge_map: NoduleEdgeMap = collections.defaultdict(dict)
+    # Mapping to store edge information.
+    nodule_edge_map: NoduleEdgeMap = collections.defaultdict(lambda: collections.defaultdict(list))
+
+    # Create top level push and pop commands.
+    slot_filter_stack_push = SlotFilterStackOperation(direction=StackDirection.PUSH, slot_filter=sf.ALLOW_ALL)
+    slot_filter_stack_pop = SlotFilterStackOperation(direction=StackDirection.POP, slot_filter=sf.ALLOW_ALL)
 
     process_token_path(token_path=token_path,
                        start_nodule=start_nodule,
                        close_nodule=close_nodule,
                        nodule_gen=nodule_gen,
                        nodule_edge_map=nodule_edge_map,
-                       slot_filter_stack_command=None,
+                       start_slot_filter_stack_command=slot_filter_stack_push,
+                       close_slot_filter_stack_command=slot_filter_stack_pop,
                        )
 
     # Sanity checks
@@ -311,22 +343,29 @@ def yield_all_nodule_walks(*
                , curr_walk: NoduleWalk
                , curr_slot_filter_stack: SlotFilterStack
                , curr_slot_filter_stack_walk: SlotFilterStackWalk
+               , prev_close_command: SlotFilterStackCommand
                ) -> typ.Iterable[typ.Tuple[NoduleWalk, SlotFilterStackWalk]]:
         if nodule_edge_map[curr_nodule]:
-            for next_nodule, next_skewer in nodule_edge_map[curr_nodule].items():
+            # Apply the previous close stack command.
+            curr_slot_filter_stack = process_stack(curr_slot_filter_stack, prev_close_command)
+            curr_slot_filter_stack_walk = tuple(curr_slot_filter_stack_walk) + (curr_slot_filter_stack,)
+
+            for next_nodule in nodule_edge_map[curr_nodule]:
                 next_graph_walk: NoduleWalk = tuple(curr_walk) + (next_nodule,)
-                command = next_skewer.command
 
-                next_slot_filter_stack = process_stack(curr_slot_filter_stack, command)
-                next_slot_filter_stack_walk = tuple(curr_slot_filter_stack_walk) + (next_slot_filter_stack,)
+                for next_skewer in nodule_edge_map[curr_nodule][next_nodule]:
+                    start_command = next_skewer.start_command
+                    close_command = next_skewer.close_command
 
-                yield from helper(curr_nodule=next_nodule
-                                  , curr_walk=next_graph_walk
-                                  , curr_slot_filter_stack=next_slot_filter_stack
-                                  , curr_slot_filter_stack_walk=next_slot_filter_stack_walk
-                                  # , curr_caches=caches
-                                  # , curr_stacks=stacks
-                                  )
+                    next_slot_filter_stack = process_stack(curr_slot_filter_stack, start_command)
+                    next_slot_filter_stack_walk = tuple(curr_slot_filter_stack_walk) + (next_slot_filter_stack,)
+
+                    yield from helper(curr_nodule=next_nodule
+                                      , curr_walk=next_graph_walk
+                                      , curr_slot_filter_stack=next_slot_filter_stack
+                                      , curr_slot_filter_stack_walk=next_slot_filter_stack_walk
+                                      , prev_close_command=close_command
+                                      )
         else:
             if close_nodule is not None and curr_nodule != close_nodule:
                 logger.warning(f'Found branch that does not end with expected close nodule, '
@@ -339,6 +378,7 @@ def yield_all_nodule_walks(*
                       , curr_walk=(start_nodule,)
                       , curr_slot_filter_stack=()
                       , curr_slot_filter_stack_walk=((),)
+                      , prev_close_command=None
                       )
 
 
@@ -418,9 +458,26 @@ def get_token_sequence(*
                        , nodule_edge_map: NoduleEdgeMap
                        , nodule_walk: NoduleWalk
                        ) -> typ.Iterable[Token]:
-    return itertools.chain.from_iterable(nodule_edge_map[nodule_a][nodule_b].tokens
-                                         for nodule_a, nodule_b in chlp.pairwise(nodule_walk)
-                                         )
+    return itertools.chain.from_iterable(skewer.tokens for nodule_a, nodule_b in chlp.pairwise(nodule_walk) for skewer in nodule_edge_map[nodule_a][nodule_b])
+
+
+def report_commands_on_all_edges(*
+                                 , nodule_edge_map: NoduleEdgeMap
+                                 , start_nodule: Nodule
+                                 ):
+    for next_nodule, next_skewers in nodule_edge_map[start_nodule].items():
+        for next_skewer in next_skewers:
+            start_command: SlotFilterStackCommand = next_skewer.start_command
+            close_command: SlotFilterStackCommand = next_skewer.close_command
+            tokens: typ.Sequence[Token] = next_skewer.tokens
+
+            print('From-To:', start_nodule, next_nodule)
+            print('Tokens:', tokens)
+            print('Start Command:', start_command if start_command else 'None')
+            print('Close Command:', close_command if close_command else 'None')
+            print('-' * 80)
+
+        report_commands_on_all_edges(nodule_edge_map=nodule_edge_map, start_nodule=next_nodule)
 
 
 AllowedSlotMap = typ.MutableMapping[

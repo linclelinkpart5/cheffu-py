@@ -45,39 +45,43 @@ def make_graph(*
         # Find all children of this nodule
         outbound_edges = nodule_edge_map[curr_nodule]
 
-        for child_nodule, nodule_skewer in outbound_edges.items():
-            # Draw a branch from current nodule to this child, adding elements as appropriate
-            tokens = nodule_skewer.tokens
-            command = nodule_skewer.command
+        for child_nodule, nodule_skewers in outbound_edges.items():
+            for nodule_skewer in nodule_skewers:
+                # Draw a branch from current nodule to this child, adding elements as appropriate
+                tokens = nodule_skewer.tokens
+                start_command = nodule_skewer.start_command
+                close_command = nodule_skewer.close_command
 
-            # Each token needs a GV node and edge
-            for token in tokens:
-                token_id: GraphvizId = str(uuid.uuid4())
+                # Each token needs a GV node and edge
+                for token in tokens:
+                    token_id: GraphvizId = str(uuid.uuid4())
 
-                # Create GV node
-                graph_nodes.append(pydot.Node(token_id, shape='circle', label=str(token)))
+                    # Create GV node
+                    graph_nodes.append(pydot.Node(token_id, shape='circle', label=str(token)))
 
-                # Create GV edge
-                edge_label: str = pretty_string(command)
-                graph_edges.append(pydot.Edge(last_node_id, token_id, arrowhead='none', label=edge_label))
+                    # Create GV edge
+                    edge_label: str = pretty_string(start_command)
+                    graph_edges.append(pydot.Edge(last_node_id, token_id, arrowhead='none', label=edge_label))
 
-                # Set command to None, since only the first segment of the skewer is to be labeled
-                command = None
+                    # Set command to None, since only the first segment of the skewer is to be labeled
+                    start_command = None
 
-                # Update pointers for next iteration
-                last_node_id = token_id
+                    # Update pointers for next iteration
+                    last_node_id = token_id
 
-            # Close last edge of skewer
-            child_nodule_id = nodule_converter(child_nodule)
-            edge_label: str = pretty_string(command)
-            graph_edges.append(pydot.Edge(last_node_id, child_nodule_id, label=edge_label, arrowsize=0.5))
+                # Close last edge of skewer
+                child_nodule_id = nodule_converter(child_nodule)
+                edge_label: str = pretty_string(close_command)
+                if start_command:
+                    edge_label = '{} & {}'.format(pretty_string(start_command), edge_label)
+                graph_edges.append(pydot.Edge(last_node_id, child_nodule_id, label=edge_label, arrowsize=0.5))
 
-            # Reset last node id
-            last_node_id = nodule_converter(curr_nodule)
+                # Reset last node id
+                last_node_id = nodule_converter(curr_nodule)
 
-            if child_nodule not in visited:
-                frontier.appendleft(child_nodule)
-                visited.add(child_nodule)
+                if child_nodule not in visited:
+                    frontier.appendleft(child_nodule)
+                    visited.add(child_nodule)
 
     assert graph_nodes
     assert graph_edges

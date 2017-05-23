@@ -2,7 +2,8 @@ import logging
 
 
 def get_logger(name: str) -> logging.Logger:
-    """Gets logger instance, and sets options for consistency."""
+    """Gets logger instance, and sets options for consistency.
+    """
     logger = logging.getLogger(name)
     logger.setLevel(logging.DEBUG)
 

@@ -23,14 +23,14 @@ sample_slot_filters = {
 }
 
 token_paths: typ.Mapping[str, par.TokenPath] = {
-    # 'empty': (),
-    # 'sequence': (
-    #     par.Token('A'),
-    #     par.Token('B'),
-    #     par.Token('C'),
-    #     par.Token('D'),
-    #     par.Token('E'),
-    # ),
+    'empty': (),
+    'sequence': (
+        par.Token('A'),
+        par.Token('B'),
+        par.Token('C'),
+        par.Token('D'),
+        par.Token('E'),
+    ),
     # 'simple_ub_split': (
     #     par.Token('A'),
     #     par.Token('B'),
@@ -269,7 +269,6 @@ token_paths: typ.Mapping[str, par.TokenPath] = {
                     (
                         par.FilteredAlt(
                             items=(
-                                par.Token('F'),
                             ),
                             slot_filter=l_sf,
                         ),
@@ -394,32 +393,35 @@ def do_stuff():
                                                                                 , close_nodule=close_nodule
                                                                                 ):
             choice_seqs.append(choice_seq)
-            print(f'Choice Sequence: {str(choice_seq)}')
+            # print(f'Choice Sequence: {str(choice_seq)}')
             # print(f'Allowed Slots: {str(allowed_slots)}')
 
             last_nodule: typ.Optional[par.Nodule] = None
             for nodule, slot_filter_stack in zip(nodule_walk, stack_walk):
                 if last_nodule is not None:
-                    tokens = nodule_edge_map[last_nodule][nodule].tokens
-                    print(f'\tTokens: {str(tokens)}')
+                    skewers = nodule_edge_map[last_nodule][nodule]
+                    # for skewer in skewers:
+                    #     print(f'\tTokens: {str(skewer.tokens)}')
 
                 last_nodule = nodule
-                print('{:<8}{:<24}'.format(nodule, str(slot_filter_stack)))
+                # print('{:<8}{:<24}'.format(nodule, str(slot_filter_stack)))
 
             count += 1
 
-            print(''.join(par.get_token_sequence(nodule_edge_map=nodule_edge_map, nodule_walk=nodule_walk)))
+            # print(''.join(par.get_token_sequence(nodule_edge_map=nodule_edge_map, nodule_walk=nodule_walk)))
 
-            print('-' * 80)
+            # print('-' * 80)
 
         unique_choice_sets = set(choice_seqs)
-        print(f'Number of Choice Seqs: {len(choice_seqs)}')
-        print(f'Number of Unique Choice Seqs: {len(unique_choice_sets)}')
-        print(f'Unique Choice Sets:\n{pprint.pformat(sorted(unique_choice_sets))}')
+        # print(f'Number of Choice Seqs: {len(choice_seqs)}')
+        # print(f'Number of Unique Choice Seqs: {len(unique_choice_sets)}')
+        # print(f'Unique Choice Sets:\n{pprint.pformat(sorted(unique_choice_sets))}')
+        #
+        # print(f'Number of Paths: {count}')
+        #
+        # print('=' * 80)
 
-        print(f'Number of Paths: {count}')
-
-        print('=' * 80)
+        par.report_commands_on_all_edges(nodule_edge_map=nodule_edge_map, start_nodule=start_nodule)
 
 lp = line_profiler.LineProfiler()
 lp_wrapper = lp(do_stuff)
