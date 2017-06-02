@@ -48,11 +48,11 @@ class Token:
 
         yield from spelunk(cls)
 
-    def process_stack(self, stack: typ.List['Token']):
-        raise NotImplemented()
-
-    def process_graph(self, nodule_edge_map: par.NoduleEdgeMap, current_nodule: par.Nodule):
-        raise NotImplemented()
+    # def process_stack(self, stack: typ.List['Token']):
+    #     raise NotImplemented()
+    #
+    # def process_graph(self, nodule_edge_map: par.NoduleEdgeMap, current_nodule: par.Nodule):
+    #     raise NotImplemented()
 
 
 class Modifiable(Token,):

@@ -4,21 +4,52 @@ import itertools
 import functools
 import uuid
 import enum
-import copy
 
 import cheffu.slot_filter as sf
 import cheffu.logging as clog
-import cheffu.helpers as chlp
 import cheffu.exceptions as chex
 
 logger = clog.get_logger(__name__)
 
-# Nodule = typ.NewType('Nodule', uuid.UUID)
-Nodule = typ.NewType('Nodule', int)
-NoduleGen = typ.Callable[[], Nodule]
+# Unique IDs for identifying graph components.
+UniqueId = typ.NewType('UniqueId', uuid.UUID)
 
-Token = typ.NewType('Token', dict)
+# Callable that generates new unique IDs.
+UniqueIdGen = typ.Callable[[], UniqueId]
+
+# IDs for nodules, edges, and tokens.
+Nodule = UniqueId
+EdgeId = UniqueId
+TokenId = UniqueId
+
+# Tokens, representing the pieces of data in Cheffu recipes.
+TokenData = typ.Any
+
+
+class Token(typ.NamedTuple):
+    id: TokenId
+    data: TokenData
+
+TokenSequence = typ.Sequence[Token]
+
+
+# Edges, representing directed connections between nodules.
+# Cheffu uses an edge-first system design.
+# Edges contain most of the interesting information of the graph.
+# It is possible for multiple edges between a pair of nodules, due to alts and variants.
+class EdgeDef(typ.NamedTuple):
+    id: EdgeId
+    src_nodule: Nodule
+    dst_nodule: Nodule
+    token_seq: TokenSequence
+    start_cmd: 'StackCommand'
+    close_cmd: 'StackCommand'
+
+# Intermediate representation of a Cheffu variant choice.
+# Variant choices allow for different sets (alts) of tokens to be included based on a slot filter.
 AltSequence = typ.Sequence['FilteredAlt']
+
+# An intermediate representation of a mixed sequence of tokens and alt sequences.
 TokenPath = typ.Sequence[typ.Union[Token, AltSequence]]
 
 
@@ -26,38 +57,76 @@ class FilteredAlt(typ.NamedTuple):
     items: TokenPath = ()
     slot_filter: sf.SlotFilter = sf.ALLOW_ALL
 
+# A stack containing slot filters, used to determine what paths are legal to walk through.
 SlotFilterStack = typ.Sequence[sf.SlotFilter]
 
 
+# Symbolic representation of a stack push/pop.
 class StackDirection(enum.Enum):
     PUSH = '+'
     POP = '-'
 
 
-# We need a separate command and slot filter (instead of just a lambda) in order to parse and view.
-class SlotFilterStackOperation(typ.NamedTuple):
+# Represents a push or pop operation on a slot filter stack.
+# We need a separate command and slot filter (instead of just using a lambda)
+# in order to make it easier to parse and view the command and slot filter.
+class StackOperation(typ.NamedTuple):
     direction: StackDirection
     slot_filter: sf.SlotFilter
 
-
-SlotFilterStackCommand = typ.Optional[SlotFilterStackOperation]
-
-
-class NoduleSkewer(typ.NamedTuple):
-    tokens: typ.Sequence[Token] = ()
-    start_command: SlotFilterStackCommand = None
-    close_command: SlotFilterStackCommand = None
+# If None, represents a no-op on the stack.
+# Otherwise, pushes or pops (depending on the direction specified) the slot filter from a stack.
+StackCommand = typ.Optional[StackOperation]
 
 
-NoduleSkewerSequence = typ.MutableSequence[NoduleSkewer]
+StackCommandSequence = typ.Sequence[StackCommand]
 
-NoduleEdgeMap = typ.MutableMapping[
-    Nodule,
-    typ.DefaultDict[
-        Nodule,
-        NoduleSkewerSequence,
-    ],
-]
+
+# Represents a move from a (implied) nodule along an edge to a new nodule.
+class GraphHop(typ.NamedTuple):
+    edge_id: EdgeId
+    nodule: Nodule
+
+# A walk along a completed graph, starting at a (implied) nodule, and then making zero or more hops to another nodule.
+GraphHopSequence = typ.Sequence[GraphHop]
+
+
+# Represents a full walk along a nodule graph.
+class GraphWalk(typ.NamedTuple):
+    start: Nodule
+    hop_seq: GraphHopSequence
+
+
+# Represents the possible change in a slot filter stack when traversing a nodule edge.
+class StackHop(typ.NamedTuple):
+    start_cmd: StackCommand
+    close_cmd: StackCommand
+
+# A sequence of stack hops.
+StackHopSequence = typ.Sequence[StackHop]
+
+
+class StackWalk(typ.NamedTuple):
+    start: SlotFilterStack
+    hop_seq: StackHopSequence
+
+# Set of edge IDs outbound for a (implied) nodule.
+OutEdgeIdSet = typ.AbstractSet[EdgeId]
+MutOutEdgeIdSet = typ.MutableSet[EdgeId]
+
+# Maps nodules to the IDs of edges travelling out from that nodule.
+NoduleOutEdgeMap = typ.Mapping[Nodule, OutEdgeIdSet]
+MutNoduleOutEdgeMap = typ.MutableMapping[Nodule, MutOutEdgeIdSet]
+
+# Maps edge IDs to their edge definitions.
+EdgeLookupMap = typ.Mapping[EdgeId, EdgeDef]
+MutEdgeLookupMap = typ.MutableMapping[EdgeId, EdgeDef]
+
+# Sequence indicating what consolidated slot filters are chosen at each branch for a particular walk of a graph.
+SlotFilterChoiceSequence = typ.Sequence[typ.Sequence[sf.SlotFilter]]
+MutSlotFilterChoiceSequence = typ.MutableSequence[typ.MutableSequence[sf.SlotFilter]]
+
+PathDepth = typ.NewType('PathDepth', int)
 
 
 def normalize_alt_sequence(alt_sequence: AltSequence) -> AltSequence:
@@ -105,68 +174,51 @@ def normalize_alt_sequence(alt_sequence: AltSequence) -> AltSequence:
     return alt_sequence
 
 
-AllowedSlotIndices = typ.AbstractSet[sf.SlotIndex]
-
-
-def generate_allowed_slot_indices_from_alt(*
-                                           , alt_sequence: AltSequence
-                                           ) -> AllowedSlotIndices:
-    """Given an alt sequence, finds the minimal "interesting" set of slot indices referenced.
-    """
-    interesting_slot_indices: typ.Set[sf.SlotIndex] = set()
-    for alt in alt_sequence:
-        slot_filter: sf.SlotFilter = alt.slot_filter
-
-        if sf.is_white_list(slot_filter):
-            interesting_slot_indices.update(sf.allowed_slots(slot_filter))
-        else:
-            interesting_slot_indices.update(sf.blocked_slots(slot_filter))
-
-    if interesting_slot_indices:
-        sorted_slot_indices: typ.List[sf.SlotIndex] = sorted(interesting_slot_indices)
-
-        if all(map(lambda t: sf.SlotIndex(t[0]) == t[1], enumerate(sorted_slot_indices))):
-            # All slot indices less than the largest selected are also selected.
-            # Select the lowest index not selected, which is equal to the length of the collection.
-            interesting_slot_indices.add(len(sorted_slot_indices))
-        else:
-            # At least one slot index less than the largest selected is not selected.
-            # Select all slot indices in [0...<largest index>], inclusive.
-            interesting_slot_indices.update(range(0, sorted_slot_indices[-1]))
-
-    return frozenset(interesting_slot_indices)
-
-
 def connect(*
-            , start_nodule: Nodule
-            , close_nodule: Nodule
-            , nodule_edge_map: NoduleEdgeMap
+            , edge_id_gen: UniqueIdGen
+            , src_nodule: Nodule
+            , dst_nodule: Nodule
+            , mut_nodule_out_edge_map: MutNoduleOutEdgeMap
+            , mut_edge_lookup_map: MutEdgeLookupMap
             , encountered_tokens: typ.Sequence[Token]
-            , start_slot_filter_stack_command: SlotFilterStackCommand
-            , close_slot_filter_stack_command: SlotFilterStackCommand
+            , start_slot_filter_stack_command: StackCommand
+            , close_slot_filter_stack_command: StackCommand
             ) -> None:
     """Connects two nodules together with an edge.
-    This edge will contain information about the tokens present on it, as well as the stack commands on start and close.
+    This edge will contain information about the tokens present on it,
+    as well as the stack commands on start and close.
     """
-    logger.debug(f'Connecting nodule {start_nodule} to nodule {close_nodule}, '
+    logger.debug(f'Connecting nodule {src_nodule} to nodule {dst_nodule}, '
                  f'containing {len(encountered_tokens)} token(s)')
 
-    nodule_skewer: NoduleSkewer = NoduleSkewer(tokens=encountered_tokens,
-                                               start_command=start_slot_filter_stack_command,
-                                               close_command=close_slot_filter_stack_command,
-                                               )
+    # A new edge needs to be created.
+    edge_id: EdgeId = edge_id_gen()
+    edge_def: EdgeDef = EdgeDef(id=edge_id
+                                , src_nodule=src_nodule
+                                , dst_nodule=dst_nodule
+                                , token_seq=encountered_tokens
+                                , start_cmd=start_slot_filter_stack_command
+                                , close_cmd=close_slot_filter_stack_command
+                               )
 
-    nodule_edge_map[start_nodule][close_nodule].append(nodule_skewer)
+    # Add edge ID to nodule out edge map.
+    mut_nodule_out_edge_map[src_nodule].add(edge_id)
+
+    # Add edge def and edge ID to edge lookup map.
+    mut_edge_lookup_map[edge_id] = edge_def
 
 
 def process_token_path(*
                        , token_path: TokenPath
                        , start_nodule: Nodule
                        , close_nodule: Nodule
-                       , nodule_gen: NoduleGen
-                       , nodule_edge_map: NoduleEdgeMap
-                       , start_slot_filter_stack_command: SlotFilterStackCommand
-                       , close_slot_filter_stack_command: SlotFilterStackCommand
+                       , nodule_gen: UniqueIdGen
+                       , edge_id_gen: UniqueIdGen
+                       , tok_id_gen: UniqueIdGen
+                       , mut_nodule_out_edge_map: MutNoduleOutEdgeMap
+                       , mut_edge_lookup_map: MutEdgeLookupMap
+                       , start_slot_filter_stack_command: StackCommand
+                       , close_slot_filter_stack_command: StackCommand
                        ) -> None:
     # Keep track of the most recent parent nodule.
     curr_parent_nodule: Nodule = start_nodule
@@ -191,10 +243,12 @@ def process_token_path(*
 
             # Capture current list of encountered tokens.
             # Close off the current skewer by connecting to the new start nodule.
-            connect(start_nodule=curr_parent_nodule,
-                    close_nodule=alt_seq_start_nodule,
-                    nodule_edge_map=nodule_edge_map,
-                    encountered_tokens=encountered_tokens,
+            connect(edge_id_gen=edge_id_gen,
+                    src_nodule=curr_parent_nodule,
+                    dst_nodule=alt_seq_start_nodule,
+                    mut_nodule_out_edge_map=mut_nodule_out_edge_map,
+                    mut_edge_lookup_map=mut_edge_lookup_map,
+                    encountered_tokens=tuple(encountered_tokens),
                     start_slot_filter_stack_command=start_slot_filter_stack_command,
                     close_slot_filter_stack_command=None,
                     )
@@ -207,11 +261,14 @@ def process_token_path(*
             encountered_tokens = []
 
             # Process the alt sequence.
-            process_alt_sequence(alt_sequence=alt_sequence,
+            process_alt_sequence(edge_id_gen=edge_id_gen,
+                                 nodule_gen=nodule_gen,
+                                 tok_id_gen=tok_id_gen,
+                                 alt_sequence=alt_sequence,
                                  start_nodule=alt_seq_start_nodule,
                                  close_nodule=alt_seq_close_nodule,
-                                 nodule_gen=nodule_gen,
-                                 nodule_edge_map=nodule_edge_map,
+                                 mut_nodule_out_edge_map=mut_nodule_out_edge_map,
+                                 mut_edge_lookup_map=mut_edge_lookup_map,
                                  )
 
             # Update current parent nodule.
@@ -226,9 +283,11 @@ def process_token_path(*
 
     # Close the path by making an edge from the current parent nodule to the close nodule.
     # Note that the value of start slot filter stack command will be None if an alt sequence is processed before here.
-    connect(start_nodule=curr_parent_nodule,
-            close_nodule=close_nodule,
-            nodule_edge_map=nodule_edge_map,
+    connect(edge_id_gen=edge_id_gen,
+            src_nodule=curr_parent_nodule,
+            dst_nodule=close_nodule,
+            mut_nodule_out_edge_map=mut_nodule_out_edge_map,
+            mut_edge_lookup_map=mut_edge_lookup_map,
             encountered_tokens=encountered_tokens,
             start_slot_filter_stack_command=start_slot_filter_stack_command,
             close_slot_filter_stack_command=close_slot_filter_stack_command,
@@ -236,11 +295,14 @@ def process_token_path(*
 
 
 def process_alt_sequence(*
+                         , edge_id_gen: UniqueIdGen
+                         , nodule_gen: UniqueIdGen
+                         , tok_id_gen: UniqueIdGen
                          , alt_sequence: AltSequence
                          , start_nodule: Nodule
                          , close_nodule: Nodule
-                         , nodule_gen: NoduleGen
-                         , nodule_edge_map: NoduleEdgeMap
+                         , mut_nodule_out_edge_map: MutNoduleOutEdgeMap
+                         , mut_edge_lookup_map: MutEdgeLookupMap
                          ):
     # Normalize alt sequence.
     alt_sequence = normalize_alt_sequence(alt_sequence)
@@ -255,28 +317,45 @@ def process_alt_sequence(*
         slot_filter: sf.SlotFilter = alt.slot_filter
 
         # Generate stack operations
-        slot_filter_stack_push = SlotFilterStackOperation(direction=StackDirection.PUSH, slot_filter=slot_filter)
-        slot_filter_stack_pop = SlotFilterStackOperation(direction=StackDirection.POP, slot_filter=slot_filter)
+        slot_filter_stack_push = StackOperation(direction=StackDirection.PUSH, slot_filter=slot_filter)
+        slot_filter_stack_pop = StackOperation(direction=StackDirection.POP, slot_filter=slot_filter)
 
         # Process items as another token path.
         # Remember to add a push command!
-        process_token_path(token_path=token_path,
+        process_token_path(edge_id_gen=edge_id_gen,
+                           nodule_gen=nodule_gen,
+                           tok_id_gen=tok_id_gen,
+                           token_path=token_path,
                            start_nodule=start_nodule,
                            close_nodule=close_nodule,
-                           nodule_gen=nodule_gen,
-                           nodule_edge_map=nodule_edge_map,
+                           mut_nodule_out_edge_map=mut_nodule_out_edge_map,
+                           mut_edge_lookup_map=mut_edge_lookup_map,
                            start_slot_filter_stack_command=slot_filter_stack_push,
                            close_slot_filter_stack_command=slot_filter_stack_pop,
                            )
 
+DEFAULT_UNIQUE_ID_GEN = uuid.uuid4
 
-def process(token_path: TokenPath, nodule_gen: NoduleGen=None):
+
+def process(*
+            , token_path: TokenPath
+            , nodule_gen: UniqueIdGen=None
+            , edge_id_gen: UniqueIdGen=None
+            , tok_id_gen: UniqueIdGen=None
+            ) -> typ.Tuple[NoduleOutEdgeMap, EdgeLookupMap, Nodule, Nodule]:
     if nodule_gen is None:
         logger.debug('Nodule generator not specified, using default generator')
-        counter = itertools.count()
-
-        def nodule_gen():
-            return next(counter)
+        nodule_gen = DEFAULT_UNIQUE_ID_GEN
+        # counter = itertools.count()
+        #
+        # def nodule_gen():
+        #     return next(counter)
+    if edge_id_gen is None:
+        logger.debug('Edge ID generator not specified, using default generator')
+        edge_id_gen = DEFAULT_UNIQUE_ID_GEN
+    if tok_id_gen is None:
+        logger.debug('Token ID generator not specified, using default generator')
+        tok_id_gen = DEFAULT_UNIQUE_ID_GEN
 
     # Create start and close nodules.
     start_nodule = nodule_gen()
@@ -284,224 +363,335 @@ def process(token_path: TokenPath, nodule_gen: NoduleGen=None):
     close_nodule = nodule_gen()
     logger.debug(f'Generated close nodule = {close_nodule}')
 
-    # Mapping to store edge information.
-    nodule_edge_map: NoduleEdgeMap = collections.defaultdict(lambda: collections.defaultdict(list))
+    # Mappings to store edge information.
+    mut_nodule_out_edge_map: MutNoduleOutEdgeMap = collections.defaultdict(set)
+    mut_edge_lookup_map: MutEdgeLookupMap = {}
 
-    # Create top level push and pop commands.
-    slot_filter_stack_push = SlotFilterStackOperation(direction=StackDirection.PUSH, slot_filter=sf.ALLOW_ALL)
-    slot_filter_stack_pop = SlotFilterStackOperation(direction=StackDirection.POP, slot_filter=sf.ALLOW_ALL)
+    # # Create top level push and pop commands.
+    # slot_filter_stack_push = StackOperation(direction=StackDirection.PUSH, slot_filter=sf.ALLOW_ALL)
+    # slot_filter_stack_pop = StackOperation(direction=StackDirection.POP, slot_filter=sf.ALLOW_ALL)
 
-    process_token_path(token_path=token_path,
+    process_token_path(edge_id_gen=edge_id_gen,
+                       nodule_gen=nodule_gen,
+                       tok_id_gen=tok_id_gen,
+                       token_path=token_path,
                        start_nodule=start_nodule,
                        close_nodule=close_nodule,
-                       nodule_gen=nodule_gen,
-                       nodule_edge_map=nodule_edge_map,
-                       start_slot_filter_stack_command=slot_filter_stack_push,
-                       close_slot_filter_stack_command=slot_filter_stack_pop,
+                       mut_nodule_out_edge_map=mut_nodule_out_edge_map,
+                       mut_edge_lookup_map=mut_edge_lookup_map,
+                       start_slot_filter_stack_command=None,
+                       close_slot_filter_stack_command=None,
                        )
 
-    # Sanity checks
-    edge_pairs = [(a, b) for a, av in nodule_edge_map.items() for b in av.keys()]
-    edge_pairs_set = set(edge_pairs)
-    assert len(edge_pairs) == len(edge_pairs_set)
-
-    return nodule_edge_map, start_nodule, close_nodule
+    return mut_nodule_out_edge_map, mut_edge_lookup_map, start_nodule, close_nodule
 
 
-def process_stack(slot_filter_stack: SlotFilterStack, slot_filter_stack_command: SlotFilterStackCommand):
-    if slot_filter_stack_command is None:
-        return slot_filter_stack
+def process_stack(*
+                  , stack: SlotFilterStack
+                  , stack_cmd: StackCommand
+                  ) -> SlotFilterStack:
+    """Process a slot filter stack according to a stack command."""
+    if stack_cmd is None:
+        # A no-op, return the stack unchanged.
+        return stack
     else:
-        direction: StackDirection = slot_filter_stack_command.direction
-        slot_filter: sf.SlotFilter = slot_filter_stack_command.slot_filter
+        # Are we doing a push or pop?
+        direction: StackDirection = stack_cmd.direction
+
+        # What value of slot filter are we expecting?
+        slot_filter: sf.SlotFilter = stack_cmd.slot_filter
 
         if direction == StackDirection.PUSH:
-            return tuple(slot_filter_stack) + (slot_filter,)
+            # Append the slot filter to the end of the stack and return.
+            return tuple(stack) + (slot_filter,)
         else:
-            popped = slot_filter_stack[-1]
-            assert popped == slot_filter
-            return slot_filter_stack[:-1]
+            # Try and index the last slot filter in the stack.
+            # If it matches, return a copy of the stack with that slot filter trimmed off.
+            if not stack:
+                raise chex.SlotFilterStackEmpty(f'Slot filter stack empty; expected = {slot_filter}')
+
+            popped = stack[-1]
+
+            if not popped == slot_filter:
+                raise chex.SlotFilterStackResultMismatch(f'Unexpected value popped from slot filter stack; '
+                                                         f'expected = {slot_filter}, found = {popped}')
+
+            return stack[:-1]
 
 
-NoduleWalk = typ.Sequence[Nodule]
-SlotFilterStackWalk = typ.Sequence[SlotFilterStack]
-# Sequence indicating what consolidated slot filters are chosen at each branch for a particular walk of a graph
-SlotFilterChoiceSequence = typ.Sequence[typ.Sequence[sf.SlotFilter]]
+def make_graph_hop_from_edge(*
+                             , edge_id: EdgeId
+                             , edge_lookup_map: EdgeLookupMap
+                             ) -> GraphHop:
+    """Helper to create a graph hop from an edge."""
+    # Obtain the next nodule found by traversing this edge.
+    edge_def: EdgeDef = edge_lookup_map[edge_id]
+    dst_nodule: Nodule = edge_def.dst_nodule
 
-PathDegree = typ.NewType('PathDegree', int)
+    return GraphHop(edge_id=edge_id, dst_nodule=dst_nodule)
 
 
-def yield_all_nodule_walks(*
-                           , nodule_edge_map: NoduleEdgeMap
-                           , start_nodule: Nodule
-                           , close_nodule: Nodule=None
-                           ) -> typ.Iterable[typ.Tuple[NoduleWalk, SlotFilterStackWalk]]:
+def make_stack_hop_from_edge(*
+                             , edge_id: EdgeId
+                             , edge_lookup_map: EdgeLookupMap
+                             ) -> StackHop:
+    """Helper to create a stack hop from an edge."""
+    edge_def: EdgeDef = edge_lookup_map[edge_id]
+    start_cmd: StackCommand = edge_def.start_cmd
+    close_cmd: StackCommand = edge_def.close_cmd
+
+    return StackHop(start_cmd=start_cmd, close_cmd=close_cmd)
+
+
+def yield_all_hop_seqs(*
+                       , nodule_out_edge_map: NoduleOutEdgeMap
+                       , edge_lookup_map: EdgeLookupMap
+                       , start_nodule: Nodule
+                       , close_nodule: Nodule = None
+                       ) -> typ.Iterable[typ.Tuple[GraphHopSequence, StackHopSequence]]:
     """Yields walks (start-to-end traversals) of a nodule edge map, as well as the slot filter stack at each step.
     """
     def helper(*
                , curr_nodule: Nodule
-               , curr_walk: NoduleWalk
-               , curr_slot_filter_stack: SlotFilterStack
-               , curr_slot_filter_stack_walk: SlotFilterStackWalk
-               , prev_close_command: SlotFilterStackCommand
-               ) -> typ.Iterable[typ.Tuple[NoduleWalk, SlotFilterStackWalk]]:
-        if nodule_edge_map[curr_nodule]:
-            # Apply the previous close stack command.
-            curr_slot_filter_stack = process_stack(curr_slot_filter_stack, prev_close_command)
-            curr_slot_filter_stack_walk = tuple(curr_slot_filter_stack_walk) + (curr_slot_filter_stack,)
+               , curr_graph_hop_seq: GraphHopSequence
+               , curr_stack_hop_seq: StackHopSequence
+               ) -> typ.Iterable[typ.Tuple[GraphHopSequence, StackHopSequence]]:
+        out_edges: OutEdgeIdSet = nodule_out_edge_map[curr_nodule]
+        if out_edges:
+            for edge_id in out_edges:
+                # Calculate the next addition to the graph walk.
+                next_graph_hop: GraphHop = make_graph_hop_from_edge(edge_id=edge_id, edge_lookup_map=edge_lookup_map)
+                next_graph_hop_seq: GraphHopSequence = tuple(curr_graph_hop_seq) + (next_graph_hop,)
 
-            for next_nodule in nodule_edge_map[curr_nodule]:
-                next_graph_walk: NoduleWalk = tuple(curr_walk) + (next_nodule,)
+                # Calculate the next addition to the stack walk.
+                next_stack_hop: StackHop = make_stack_hop_from_edge(edge_id=edge_id, edge_lookup_map=edge_lookup_map)
+                next_stack_hop_seq: StackHopSequence = tuple(curr_stack_hop_seq) + (next_stack_hop,)
 
-                for next_skewer in nodule_edge_map[curr_nodule][next_nodule]:
-                    start_command = next_skewer.start_command
-                    close_command = next_skewer.close_command
+                # Get the next nodule from this edge we traversed.
+                next_nodule: Nodule = edge_lookup_map[edge_id].dst_nodule
 
-                    next_slot_filter_stack = process_stack(curr_slot_filter_stack, start_command)
-                    next_slot_filter_stack_walk = tuple(curr_slot_filter_stack_walk) + (next_slot_filter_stack,)
-
-                    yield from helper(curr_nodule=next_nodule
-                                      , curr_walk=next_graph_walk
-                                      , curr_slot_filter_stack=next_slot_filter_stack
-                                      , curr_slot_filter_stack_walk=next_slot_filter_stack_walk
-                                      , prev_close_command=close_command
-                                      )
+                yield from helper(curr_nodule=next_nodule
+                                  , curr_graph_hop_seq=next_graph_hop_seq
+                                  , curr_stack_hop_seq=next_stack_hop_seq
+                                  )
+        # Base case, stop when this nodule is a dead end.
         else:
             if close_nodule is not None and curr_nodule != close_nodule:
                 logger.warning(f'Found branch that does not end with expected close nodule, '
                                f'expected = {close_nodule}, found = {curr_nodule}')
                 return
 
-            yield curr_walk, curr_slot_filter_stack_walk
+            yield curr_graph_hop_seq, curr_stack_hop_seq
 
     yield from helper(curr_nodule=start_nodule
-                      , curr_walk=(start_nodule,)
-                      , curr_slot_filter_stack=()
-                      , curr_slot_filter_stack_walk=((),)
-                      , prev_close_command=None
+                      , curr_graph_hop_seq=()
+                      , curr_stack_hop_seq=()
                       )
 
 
-def yield_valid_nodule_walks(*
-                             , nodule_edge_map: NoduleEdgeMap
-                             , start_nodule: Nodule
-                             , close_nodule: Nodule=None
-                             ) -> typ.Iterable[typ.Tuple[NoduleWalk, SlotFilterStackWalk, SlotFilterChoiceSequence]]:
-    for nodule_walk, slot_filter_stack_walk in yield_all_nodule_walks(nodule_edge_map=nodule_edge_map
-                                                                      , start_nodule=start_nodule
-                                                                      , close_nodule=close_nodule
-                                                                      ):
-        is_valid, choice_sequence = validate_slot_filter_stack_walk(slot_filter_stack_walk=slot_filter_stack_walk)
-        if is_valid:
-            yield nodule_walk, slot_filter_stack_walk, choice_sequence
+# def n_validate_stack_hop_seq(*
+#                            , stack_hop_seq: StackHopSequence
+#                            ) -> typ.Tuple[bool, typ.Optional[SlotFilterChoiceSequence]]:
+#     """Given a stack hop sequence, calculates if it is legal.
+#     If so, also returns its corresponding slot choice sequence.
+#     """
+#     # Keeps track of the current allowed slot filter for a given path depth.
+#     # In other words, if we're at path depth X, and a slot filter choice is encountered,
+#     # the Xth key of this is what is used to tell if we can go down that scope.
+#     # When a new scope is created, this gets set to the first slot filter encountered.
+#     # Within a scope, this gets used to test further encountered slot filters to see if there is a match.
+#     caches: typ.MutableMapping[PathDepth, sf.SlotFilter] = {}
+#
+#     # This tracks the slot filter selected when a new scope is created.
+#     selections: typ.DefaultDict[PathDepth, typ.List[sf.SlotFilter]] = collections.defaultdict(list)
+#
+#     curr_depth: PathDepth = 0
+#     curr_stack: SlotFilterStack = ()
+#
+#     # Iterate over all stack commands in stack hop sequence.
+#     # This requires some unpacking.
+#     for stack_cmd in itertools.chain.from_iterable(stack_hop_seq):
+#         # Process stack to allow for exceptions.
+#         next_stack = process_stack(stack=curr_stack, stack_cmd=stack_cmd)
+#         next_depth = curr_depth
+#
+#         if stack_cmd is None:
+#             pass
+#         elif stack_cmd.direction == StackDirection.PUSH:
+#             next_depth = curr_depth + 1
+#
+#             tested_sf: sf.SlotFilter = stack_cmd.slot_filter
+#
+#             # If no slot filter exists in the cache for this path degree, add it.
+#             # In addition, note this slot filter as a selection.
+#             if curr_depth not in caches:
+#                 caches[curr_depth] = tested_sf
+#                 selections[curr_depth].append(tested_sf)
+#
+#             # Test if this pushed slot filter is valid w.r.t. the known cached slot filter for this path depth.
+#             cached_sf: sf.SlotFilter = caches[curr_depth]
+#
+#             intersect = sf.intersection(cached_sf, tested_sf)
+#             if intersect == sf.BLOCK_ALL:
+#                 return False, None
+#
+#             # Update cache and stack with new intersected slot filter, since it may have been narrowed in scope.
+#             caches[curr_depth] = intersect
+#             selections[curr_depth][-1] = intersect
+#         elif stack_cmd.direction == StackDirection.POP:
+#             next_depth = curr_depth - 1
+#
+#             to_delete = set()
+#             for k in caches.keys():
+#                 if k > next_depth:
+#                     to_delete.add(k)
+#             for k in to_delete:
+#                 del caches[k]
+#
+#         curr_depth = next_depth
+#         curr_stack = next_stack
 
 
-def validate_slot_filter_stack_walk(*
-                                    , slot_filter_stack_walk: SlotFilterStackWalk
-                                    ) -> typ.Tuple[bool, typ.Optional[SlotFilterChoiceSequence]]:
-    caches: typ.MutableMapping[PathDegree, sf.SlotFilter] = {}
-    stacks: typ.DefaultDict[PathDegree, typ.List[sf.SlotFilter]] = collections.defaultdict(list)
+def validate_stack_cmd_seq(*
+                           , stack_cmd_seq: StackCommandSequence
+                           ) -> typ.Tuple[bool, typ.Optional[SlotFilterChoiceSequence]]:
+    """Given a stack command sequence, calculates if it is legal.
+    If so, also returns its corresponding slot choice sequence.
+    """
+    # Keeps track of the current allowed slot filter for a given path depth.
+    # In other words, if we're at path depth X, and a slot filter choice is encountered,
+    # the Xth key of this is what is used to tell if we can go down that scope.
+    # When a new scope is created, this gets set to the first slot filter encountered.
+    # Within a scope, this gets used to test further encountered slot filters to see if there is a match.
+    caches: typ.MutableMapping[PathDepth, sf.SlotFilter] = {}
 
-    for prev_slot_filter_stack, curr_slot_filter_stack in chlp.pairwise(slot_filter_stack_walk):
-        # Assert that one stack is a prefix of the other
-        for p, c in zip(prev_slot_filter_stack, curr_slot_filter_stack):
-            assert p == c
+    # This tracks the slot filter selected when a new scope is created.
+    selections: typ.DefaultDict[PathDepth, typ.List[sf.SlotFilter]] = collections.defaultdict(list)
 
-        prev_degree: PathDegree = len(prev_slot_filter_stack)
-        curr_degree: PathDegree = len(curr_slot_filter_stack)
+    curr_stack: SlotFilterStack = ()
 
-        direction = curr_degree - prev_degree
+    # Iterate over all stack commands in stack hop sequence.
+    # This requires some unpacking.
+    for stack_cmd in stack_cmd_seq:
+        # Generate what the next stack would look like.
+        next_stack = process_stack(stack=curr_stack, stack_cmd=stack_cmd)
 
-        # At this point, one stack should be a prefix of the other
+        # Assert that one stack is a prefix of the other.
+        for c, n in zip(curr_stack, next_stack):
+            assert c == n
+
+        # The path depth of a stack is equal to its length.
+        curr_depth: PathDepth = len(curr_stack)
+        next_depth: PathDepth = len(next_stack)
+
+        # Direction indicates the direction of change in the stack.
+        direction = next_depth - curr_depth
+
+        # If direction is zero, no-op.
         if direction == 0:
             pass
+        # Else if direction is positive, a push occurred.
+        # Generalize, and allow any amount of pushed elements.
         elif direction > 0:
-            for i in range(prev_degree, curr_degree):
+            for i in range(curr_depth, next_depth):
                 if i not in caches:
-                    caches[i] = curr_slot_filter_stack[i]
-                    stacks[i].append(curr_slot_filter_stack[i])
+                    new_sf: sf.SlotFilter = next_stack[i]
+                    caches[i] = new_sf
+                    selections[i].append(new_sf)
 
-                cached_slot_filter = caches[i]
-                tested_slot_filter = curr_slot_filter_stack[i]
+                # Test if this pushed slot filter is valid w.r.t. the known cached slot filter for this path depth.
+                cached_sf: sf.SlotFilter = caches[i]
+                tested_sf: sf.SlotFilter = next_stack[i]
 
-                intersect = sf.intersection(cached_slot_filter, tested_slot_filter)
+                intersect = sf.intersection(cached_sf, tested_sf)
                 if intersect == sf.BLOCK_ALL:
+                    logger.debug(f'New and cached slot filters did not intersect; '
+                                 f'new = {tested_sf}, cached = {cached_sf}')
                     return False, None
 
+                # Update cache and stack with new intersected slot filter, since it may have been narrowed in scope.
                 caches[i] = intersect
-                stacks[i][-1] = intersect
+                selections[i][-1] = intersect
+        # Else if direction is negative, a pop occurred.
+        # Generalize, and allow any amount of popped elements.
         elif direction < 0:
             to_delete = set()
             for k in caches.keys():
-                if k > curr_degree:
+                if k > next_depth:
                     to_delete.add(k)
             for k in to_delete:
                 del caches[k]
 
+        # Update current stack.
+        curr_stack = next_stack
+
+    # If stack hop sequence is valid, we should be once again left with an empty stack.
+    if curr_stack:
+        logger.debug(f'Final stack was not empty, contained {curr_stack}')
+        return False, None
+
     # Convert stacks into proper choice sequence
     tmp_list = []
-    for key in sorted(stacks.keys()):
-        tmp_list.append(tuple(stacks[key]))
+    for key in sorted(selections.keys()):
+        tmp_list.append(tuple(selections[key]))
     choice_sequence = tuple(tmp_list)
 
     return True, choice_sequence
 
 
-def is_valid_stack_walk(*,
-                        slot_filter_stack_walk: SlotFilterStackWalk
-                        ) -> bool:
-    result, _ = validate_slot_filter_stack_walk(slot_filter_stack_walk=slot_filter_stack_walk)
-    return result
+def yield_valid_hop_seqs(*
+                         , nodule_out_edge_map: NoduleOutEdgeMap
+                         , edge_lookup_map: EdgeLookupMap
+                         , start_nodule: Nodule
+                         , close_nodule: Nodule = None
+                         ) -> typ.Iterable[typ.Tuple[GraphHopSequence, StackHopSequence, SlotFilterChoiceSequence]]:
+    for graph_hop_seq, stack_hop_seq in yield_all_hop_seqs(nodule_out_edge_map=nodule_out_edge_map
+                                                           , edge_lookup_map=edge_lookup_map
+                                                           , start_nodule=start_nodule
+                                                           , close_nodule=close_nodule
+                                                           ):
+        stack_cmd_seq: StackCommandSequence = tuple(itertools.chain.from_iterable(stack_hop_seq))
+        is_valid, choice_seq = validate_stack_cmd_seq(stack_cmd_seq=stack_cmd_seq)
+        if is_valid:
+            yield graph_hop_seq, stack_hop_seq, choice_seq
 
 
-def get_token_sequence(*
-                       , nodule_edge_map: NoduleEdgeMap
-                       , nodule_walk: NoduleWalk
-                       ) -> typ.Iterable[Token]:
-    return itertools.chain.from_iterable(skewer.tokens for nodule_a, nodule_b in chlp.pairwise(nodule_walk) for skewer in nodule_edge_map[nodule_a][nodule_b])
+def yield_tokens_from_graph_walk(*
+                                 , nodule_out_edge_map: NoduleOutEdgeMap
+                                 , edge_lookup_map: EdgeLookupMap
+                                 , graph_walk: GraphWalk
+                                 ) -> typ.Iterable[Token]:
+    curr_nodule = graph_walk.start
+    graph_hop_seq = graph_walk.hop_seq
+
+    for graph_hop in graph_hop_seq:
+        # Get out edge IDs for the current nodule.
+        # TODO: Handle exceptions!
+        out_edge_ids: OutEdgeIdSet = nodule_out_edge_map[curr_nodule]
+
+        desired_out_edge_id: EdgeId = graph_hop.edge_id
+        desired_dst_nodule: Nodule = graph_hop.nodule
+
+        assert desired_out_edge_id in out_edge_ids
+
+        edge_def: EdgeDef = edge_lookup_map[desired_out_edge_id]
+
+        assert edge_def.src_nodule == curr_nodule
+        assert edge_def.dst_nodule == desired_out_edge_id
+
+        yield from edge_def.token_seq
+
+        curr_nodule = desired_dst_nodule
 
 
-def report_commands_on_all_edges(*
-                                 , nodule_edge_map: NoduleEdgeMap
-                                 , start_nodule: Nodule
-                                 ):
-    for next_nodule, next_skewers in nodule_edge_map[start_nodule].items():
-        for next_skewer in next_skewers:
-            start_command: SlotFilterStackCommand = next_skewer.start_command
-            close_command: SlotFilterStackCommand = next_skewer.close_command
-            tokens: typ.Sequence[Token] = next_skewer.tokens
+def stack_cmd_str(stack_cmd: StackCommand) -> str:
+    if not stack_cmd:
+        return 'NoOp'
+    else:
+        direction: StackDirection = stack_cmd.direction
+        slot_filter: sf.SlotFilter = stack_cmd.slot_filter
 
-            print('From-To:', start_nodule, next_nodule)
-            print('Tokens:', tokens)
-            print('Start Command:', start_command if start_command else 'None')
-            print('Close Command:', close_command if close_command else 'None')
-            print('-' * 80)
-
-        report_commands_on_all_edges(nodule_edge_map=nodule_edge_map, start_nodule=next_nodule)
-
-
-AllowedSlotMap = typ.MutableMapping[
-    Nodule,
-    typ.MutableMapping[
-        sf.SlotIndex,
-        Nodule,
-    ],
-]
+        return f'{direction.name.title()}({slot_filter})'
 
 
 # TODO: Need a way to list all legal filtered paths through a recipe, as well as a way to address each unique path.
-
-
-# def generate_allowed_slot_map(*
-#                               , nodule_edge_map: NoduleEdgeMap
-#                               , start_nodule: Nodule
-#                               , close_nodule: Nodule=None
-#                               ):
-#     allowed_slot_map: AllowedSlotMap = collections.defaultdict(dict)
-#
-#     for _, stack_walk, _ in yield_valid_nodule_walks(nodule_edge_map=nodule_edge_map
-#                                                                         , start_nodule=start_nodule
-#                                                                         , close_nodule=close_nodule
-#                                                                         ):
-#         for stack in stack_walk:
-

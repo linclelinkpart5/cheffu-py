@@ -10,6 +10,12 @@ ALL_ONES = SlotFilter(-1)
 BLOCK_ALL = ALL_ZERO
 ALLOW_ALL = ALL_ONES
 
+ALLOW_NONE = BLOCK_ALL
+BLOCK_NONE = ALLOW_ALL
+
+ALL_BLACK = BLOCK_ALL
+ALL_WHITE = ALLOW_ALL
+
 
 def make_white_list(*indices: SlotIndex) -> SlotFilter:
     """Given a list of non-negative integer indices, returns a slot filter with
@@ -29,7 +35,7 @@ def make_black_list(*slots: SlotIndex) -> SlotFilter:
 
     Note that the LSB is considered to be index 0.
     """
-    return ~(make_white_list(*slots))
+    return invert(make_white_list(*slots))
 
 
 def union(slot_filter_a: SlotFilter, slot_filter_b: SlotFilter) -> SlotFilter:
