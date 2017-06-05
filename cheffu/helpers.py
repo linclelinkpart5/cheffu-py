@@ -26,9 +26,11 @@ def empty_context():
 
 
 def yield_sum_splits(n: int) -> typ.Iterable[typ.Tuple[int, int]]:
-    """Given an integer, returns all possible sum splits.
+    """Given an integer, returns all possible sum splits. For any given split (a, b), a + b will always equal n.
 
-    For example, 5 -> (0, 5), (1, 4), (2, 3), (3, 2), (4, 1), (5, 0).
+    For example:
+        5   -> (0, 5), (1, 4), (2, 3), (3, 2), (4, 1), (5, 0)
+        -5  -> (0, -5), (-1, -4), (-2, -3), (-3, -2), (-4, -1), (-5, 0)
     """
     sign = int(math.copysign(1, n))
     an = abs(n)

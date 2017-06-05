@@ -1,99 +1,131 @@
-import collections
+import itertools
 import typing as typ
 import pydot
-import uuid
 
-import cheffu.parallel as cpa
-import cheffu.slot_filter as sf
+import cheffu.parallel as par
+import cheffu.logging as clog
 
+logger = clog.get_logger(__name__)
 
 GraphvizId = typ.NewType('GraphvizId', str)
-NoduleConverter = typ.Callable[[cpa.Nodule], GraphvizId]
+UniqueIdConverter = typ.Callable[[par.UniqueId], GraphvizId]
+TokenConverter = typ.Callable[[par.Token], str]
 
 
-# def make_graph(*
-#                , start_nodule: cpa.Nodule
-#                , nodule_edge_map: cpa.NoduleEdgeMap
-#                , nodule_converter: NoduleConverter=str
-#                ) -> pydot.Graph:
-#     def pretty_string(slot_filter_stack_command: cpa.StackCommand) -> str:
-#         if slot_filter_stack_command is None:
-#             return ''
-#         else:
-#             return '{} {}'.format(slot_filter_stack_command.direction.value
-#                                   , sf.pretty_string(slot_filter_stack_command.slot_filter)
-#                                   )
-#
-#     # Breadth-first search to find all nodes
-#     # Create and initialize data structures to help
-#     frontier: typ.Deque[cpa.Nodule] = collections.deque()
-#     frontier.appendleft(start_nodule)
-#
-#     visited: typ.MutableSet[cpa.Nodule] = set()
-#     visited.add(start_nodule)
-#
-#     graph_nodes: typ.MutableSequence[pydot.Node] = []
-#     graph_edges: typ.MutableSequence[pydot.Edge] = []
-#
-#     while frontier:
-#         curr_nodule: cpa.Nodule = frontier.pop()
-#
-#         # Create graph object for nodule
-#         last_node_id = nodule_converter(curr_nodule)
-#         graph_nodes.append(pydot.Node(last_node_id, shape='point', width=0.125, height=0.125))
-#
-#         # Find all children of this nodule
-#         outbound_edges = nodule_edge_map[curr_nodule]
-#
-#         for child_nodule, nodule_skewers in outbound_edges.items():
-#             for nodule_skewer in nodule_skewers:
-#                 # Draw a branch from current nodule to this child, adding elements as appropriate
-#                 tokens = nodule_skewer.tokens
-#                 start_command = nodule_skewer.start_command
-#                 close_command = nodule_skewer.close_command
-#
-#                 # Each token needs a GV node and edge
-#                 for token in tokens:
-#                     token_id: GraphvizId = str(uuid.uuid4())
-#
-#                     # Create GV node
-#                     graph_nodes.append(pydot.Node(token_id, shape='circle', label=str(token)))
-#
-#                     # Create GV edge
-#                     edge_label: str = pretty_string(start_command)
-#                     graph_edges.append(pydot.Edge(last_node_id, token_id, arrowhead='none', label=edge_label))
-#
-#                     # Set command to None, since only the first segment of the skewer is to be labeled
-#                     start_command = None
-#
-#                     # Update pointers for next iteration
-#                     last_node_id = token_id
-#
-#                 # Close last edge of skewer
-#                 child_nodule_id = nodule_converter(child_nodule)
-#                 edge_label: str = pretty_string(close_command)
-#                 if start_command:
-#                     edge_label = '{} & {}'.format(pretty_string(start_command), edge_label)
-#                 graph_edges.append(pydot.Edge(last_node_id, child_nodule_id, label=edge_label, arrowsize=0.5))
-#
-#                 # Reset last node id
-#                 last_node_id = nodule_converter(curr_nodule)
-#
-#                 if child_nodule not in visited:
-#                     frontier.appendleft(child_nodule)
-#                     visited.add(child_nodule)
-#
-#     assert graph_nodes
-#     assert graph_edges
-#
-#     # Create Graphviz object
-#     graph: pydot.Graph = pydot.Dot(graph_type='digraph', strict=False)
-#
-#     # Add nodes and edges to graph
-#     for graph_node in graph_nodes:
-#         graph.add_node(graph_node)
-#
-#     for graph_edge in graph_edges:
-#         graph.add_edge(graph_edge)
-#
-#     return graph
+def make_graph(*
+               , nodule_out_edge_map: par.NoduleOutEdgeMap
+               , edge_lookup_map: par.EdgeLookupMap
+               , unique_id_conv: UniqueIdConverter=None
+               , token_conv: TokenConverter=None
+               ) -> pydot.Graph:
+    # If ID converter is not specified, use the default.
+    if unique_id_conv is None:
+        logger.info('Unique ID converter not specified, using default converter')
+
+        def unique_id_conv(x):
+            return str(x)
+
+    # If token converter is not specified, use the default.
+    if token_conv is None:
+        logger.info('Token converter not specified, using default converter')
+
+        def token_conv(t: par.Token) -> str:
+            token_data: par.TokenData = t.data
+            return str(token_data)
+
+    # Storage for Graphviz nodes and edges.
+    gv_node_map: typ.MutableMapping[par.UniqueId, pydot.Node] = {}
+    gv_edges: typ.MutableSequence[pydot.Edge] = []
+
+    # Create Graphviz nodes from nodules.
+    nodule_count = 0
+    for nodule in nodule_out_edge_map:
+        nodule_gv_node = pydot.Node(name=unique_id_conv(nodule)
+                                    , shape='point'
+                                    , width=0.125
+                                    , height=0.125
+                                    )
+
+        gv_node_map[nodule] = nodule_gv_node
+        nodule_count += 1
+
+    logger.info(f'Created {nodule_count} Graphviz node(s) from nodules')
+
+    # Create Graphviz nodes from tokens.
+    token_count = 0
+    for token in itertools.chain.from_iterable(edge_def.token_seq for edge_def in edge_lookup_map.values()):
+        token_id: par.TokenId = token.id
+
+        token_gv_node = pydot.Node(name=unique_id_conv(token_id)
+                                   , shape='circle'
+                                   , label=token_conv(token)
+                                   )
+
+        gv_node_map[token_id] = token_gv_node
+        token_count += 1
+
+    logger.info(f'Created {token_count} Graphviz node(s) from tokens')
+
+    # Creating Graphviz edges are more complicated.
+    # An edge needs to be drawn between nodules and tokens, not just from nodule to nodule.
+    # In addition, only edges directly entering a nodule should have arrowheads.
+    # Start with each edge definition.
+    virtual_edge_count = 0
+    for edge_id, edge_def in edge_lookup_map.items():
+        src_nodule: par.Nodule = edge_def.src_nodule
+        dst_nodule: par.Nodule = edge_def.dst_nodule
+        token_seq: par.TokenSequence = edge_def.token_seq
+
+        # For this edge definition, this stores the newest node ID to connect a Graphviz edge from.
+        curr_anchor_node_id: par.UniqueId = src_nodule
+        tail_label: str = par.stack_cmd_label_str(edge_def.start_cmd)
+        head_label: str = par.stack_cmd_label_str(edge_def.close_cmd)
+
+        for token in token_seq:
+            token_id: par.TokenId = token.id
+
+            # Draw a Graphviz edge (without arrowhead) from the current anchor node to this token.
+            gv_edge = pydot.Edge(gv_node_map[curr_anchor_node_id]
+                                 , gv_node_map[token_id]
+                                 , arrowhead='none'
+                                 , headlabel=''
+                                 , taillabel=tail_label
+                                 )
+
+            tail_label = ''
+
+            gv_edges.append(gv_edge)
+
+            # Update the current anchor node ID.
+            curr_anchor_node_id = token_id
+
+        # Draw a Graphviz edge from the current anchor node to the destination nodule.
+        # This edge will have an arrowhead.
+        gv_edge = pydot.Edge(gv_node_map[curr_anchor_node_id]
+                             , gv_node_map[dst_nodule]
+                             , arrowhead='vee'
+                             , headlabel=head_label
+                             , taillabel=tail_label
+                             )
+
+        gv_edges.append(gv_edge)
+        virtual_edge_count += 1
+
+    actual_edge_count = len(gv_edges)
+
+    logger.info(f'Created {actual_edge_count} Graphviz edge(s) from {virtual_edge_count} virtual edge(s)')
+
+    # Create Graphviz graph, and add nodes and edges to it.
+    graph: pydot.Graph = pydot.Dot(graph_type='digraph'
+                                   , strict=False
+                                   , overlap=False
+                                   , splines=True
+                                   )
+
+    for gv_node in gv_node_map.values():
+        graph.add_node(gv_node)
+
+    for gv_edge in gv_edges:
+        graph.add_edge(gv_edge)
+
+    return graph

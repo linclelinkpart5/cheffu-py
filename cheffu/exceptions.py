@@ -19,7 +19,11 @@ class SlotFilterStackException(CheffuBaseException):
 
 
 class SlotFilterStackEmpty(SlotFilterStackException):
-    """Raised when a pop is performed on a slot filter stack, but it is empty."""
+    """Raised when a slot filter stack is expected to have elements, but instead it is empty."""
+
+
+class SlotFilterStackNonempty(SlotFilterStackException):
+    """Raised when a slot filter stack is expected to be empty, but instead it has elements."""
 
 
 class SlotFilterStackResultMismatch(SlotFilterStackException):

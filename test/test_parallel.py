@@ -12,10 +12,11 @@ import cheffu.helpers as chlp
 def yield_valid_stack_cmd_seqs(length: int) -> typ.Iterable[par.StackCommandSequence]:
     """Lazily yields valid stack command sequences with increasing slot filter values.
 
-    Valid stack command sequences are properly nested and balanced.
+    Valid stack command sequences are properly nested and balanced, and follow Cheffu slot/scope rules.
     """
     # Using black lists because they have an infinite intersection set.
     # An intersection between any two black lists is always guaranteed to have some allowed slots.
+    # This enables following Cheffu slot/scope rules.
     sf_count = itertools.count(start=sf.ALLOW_ALL, step=-1)
 
     def helper(n: int) -> typ.Iterable[par.StackCommandSequence]:
@@ -24,7 +25,7 @@ def yield_valid_stack_cmd_seqs(length: int) -> typ.Iterable[par.StackCommandSequ
             yield ()
             return
 
-        # Generate sequences of NoOp + Subcombinations(n - 1)
+        # Generate sequences of NoOp + Subcombinations(n - 1).
         subcombinations = helper(n - 1)
         for subcombination in subcombinations:
             yield (None, *subcombination)
@@ -421,7 +422,7 @@ class TestParallel(unittest.TestCase):
     })
 
     VALID_STACK_CMD_SEQS = tuple(
-        yield_valid_stack_cmd_seqs(6)
+        itertools.chain.from_iterable(yield_valid_stack_cmd_seqs(i) for i in range(6))
     )
 
     def test_process_stack(self):
@@ -457,9 +458,9 @@ class TestParallel(unittest.TestCase):
                 actual_stack = par.process_stack(stack=v_stack, stack_cmd=v_stack_cmd)
                 self.assertEqual(expected_stack, actual_stack)
 
-    def test_validate_stack_cmd_seq(self):
+    def test_validate_stack_cmd_seq_a(self):
         for stack_cmd_seq in self.VALID_STACK_CMD_SEQS:
-            is_valid, slot_filter_choice_seq = par.validate_stack_cmd_seq(stack_cmd_seq=stack_cmd_seq)
+            is_valid, _ = par.validate_stack_cmd_seq(stack_cmd_seq=stack_cmd_seq)
             self.assertTrue(is_valid)
 
 if __name__ == '__main__':
