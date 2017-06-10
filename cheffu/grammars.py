@@ -35,6 +35,7 @@ grammar_whitespace_mode = 'optional'
 
 # Primitives
 
+
 class NonNegInteger(mg.Grammar):
     grammar = mg.WORD(DIGIT_CHARS)
 
@@ -207,27 +208,6 @@ class VariantSlotFilter(mg.Grammar):
 
     def value(self):
         return self[1].value()
-
-
-# import cheffu.interfaces as chin
-# def make_grammar_for_token(token_interface: typ.Type[chin.Token]) -> typ.Type[mg.Grammar]:
-#     keyword: str = token_interface.keyword
-#     arg_grammar: mg.Grammar = token_interface.arg_grammar
-#     cls_dict = {
-#         'grammar_whitespace_mode': 'optional',
-#         'grammar': (mg.LITERAL(keyword), arg_grammar),
-#     }
-#
-#     ret: typ.Type[mg.Grammar] = types.new_class(keyword, (mg.Grammar,), {}, lambda ns: ns.update(cls_dict))
-#     return ret
-#
-#
-# TokenKeywordToGrammar: typ.Mapping[str, typ.Type[mg.Grammar]] = \
-#     {ti.keyword: make_grammar_for_token(ti) for ti in chin.Token.get_definable_tokens()}
-#
-#
-# print(TokenKeywordToGrammar)
-
 
 
 class Phrase(mg.Grammar):

@@ -1,36 +1,22 @@
-import collections
-import typing as typ
 import itertools
-import functools
+import typing as typ
 import uuid
-import enum
 
-import cheffu.slot_filter as sf
-import cheffu.logging as clog
+import collections
+import enum
+import functools
+
 import cheffu.exceptions as chex
+import cheffu.logging as clog
+import cheffu.slot_filter as sf
+import cheffu.types.common as ctpc
+import cheffu.types.tokens as ctpt
 
 logger = clog.get_logger(__name__)
 
-# Unique IDs for identifying graph components.
-UniqueId = typ.NewType('UniqueId', uuid.UUID)
-
-# Callable that generates new unique IDs.
-UniqueIdGen = typ.Callable[[], UniqueId]
-
 # IDs for nodules, edges, and tokens.
-Nodule = UniqueId
-EdgeId = UniqueId
-TokenId = UniqueId
-
-# Tokens, representing the pieces of data in Cheffu recipes.
-TokenData = typ.Any
-
-
-class Token(typ.NamedTuple):
-    id: TokenId
-    data: TokenData
-
-TokenSequence = typ.Sequence[Token]
+Nodule = ctpc.UniqueId
+EdgeId = ctpc.UniqueId
 
 
 # Cheffu uses an edge-first system design, where edges represent directed connections between nodules.
@@ -40,7 +26,7 @@ class EdgeDef(typ.NamedTuple):
     id: EdgeId
     src_nodule: Nodule
     dst_nodule: Nodule
-    token_seq: TokenSequence
+    token_seq: ctpt.TokenSequence
     start_cmd: 'StackCommand'
     close_cmd: 'StackCommand'
 
@@ -49,11 +35,11 @@ class EdgeDef(typ.NamedTuple):
 AltSequence = typ.Sequence['FilteredAlt']
 
 # An intermediate representation of a mixed sequence of tokens and alt sequences.
-TokenPath = typ.Sequence[typ.Union[Token, AltSequence]]
+ProcedurePath = typ.Sequence[typ.Union[ctpt.Token, AltSequence]]
 
 
 class FilteredAlt(typ.NamedTuple):
-    items: TokenPath = ()
+    items: ProcedurePath = ()
     slot_filter: sf.SlotFilter = sf.ALLOW_ALL
 
 # A stack containing slot filters, used to determine what paths are legal to walk through.
@@ -174,12 +160,12 @@ def normalize_alt_sequence(alt_sequence: AltSequence) -> AltSequence:
 
 
 def connect(*
-            , edge_id_gen: UniqueIdGen
+            , edge_id_gen: ctpc.UniqueIdGen
             , src_nodule: Nodule
             , dst_nodule: Nodule
             , mut_nodule_out_edge_map: MutNoduleOutEdgeMap
             , mut_edge_lookup_map: MutEdgeLookupMap
-            , encountered_tokens: typ.Sequence[Token]
+            , encountered_tokens: typ.Sequence[ctpt.Token]
             , start_slot_filter_stack_command: StackCommand
             , close_slot_filter_stack_command: StackCommand
             ) -> None:
@@ -208,30 +194,30 @@ def connect(*
 
 
 def process_token_path(*
-                       , token_path: TokenPath
+                       , procedure_path: ProcedurePath
                        , start_nodule: Nodule
                        , close_nodule: Nodule
-                       , nodule_gen: UniqueIdGen
-                       , edge_id_gen: UniqueIdGen
-                       , tok_id_gen: UniqueIdGen
+                       , nodule_gen: ctpc.UniqueIdGen
+                       , edge_id_gen: ctpc.UniqueIdGen
+                       , tok_id_gen: ctpc.UniqueIdGen
                        , mut_nodule_out_edge_map: MutNoduleOutEdgeMap
                        , mut_edge_lookup_map: MutEdgeLookupMap
                        , start_slot_filter_stack_command: StackCommand
                        , close_slot_filter_stack_command: StackCommand
                        ) -> None:
-    logger.debug(f'Starting processing of subtoken path, with {len(token_path)} element(s)')
+    logger.debug(f'Starting processing of subprocedure path, with {len(procedure_path)} element(s)')
 
     # Keep track of the most recent parent nodule.
     curr_parent_nodule: Nodule = start_nodule
 
     # Collect tokens encountered directly on this path.
-    encountered_tokens: typ.MutableSequence[Token] = []
+    encountered_tokens: typ.MutableSequence[ctpt.Token] = []
 
     # Process each path item.
-    for path_item in token_path:
+    for path_item in procedure_path:
         # We need to check if this is an instance of token first, since it would match the check for tuple.
-        if isinstance(path_item, Token):
-            token: Token = typ.cast(Token, path_item)
+        if isinstance(path_item, ctpt.Token):
+            token: ctpt.Token = typ.cast(ctpt.Token, path_item)
 
             # Add to the list of encountered tokens
             encountered_tokens.append(token)
@@ -295,13 +281,13 @@ def process_token_path(*
     # This creates an entry for the close nodule if it does not already exist.
     _ = mut_nodule_out_edge_map[close_nodule]
 
-    logger.debug(f'Finished processing of subtoken path')
+    logger.debug(f'Finished processing of subprocedure path')
 
 
 def process_alt_sequence(*
-                         , edge_id_gen: UniqueIdGen
-                         , nodule_gen: UniqueIdGen
-                         , tok_id_gen: UniqueIdGen
+                         , edge_id_gen: ctpc.UniqueIdGen
+                         , nodule_gen: ctpc.UniqueIdGen
+                         , tok_id_gen: ctpc.UniqueIdGen
                          , alt_sequence: AltSequence
                          , start_nodule: Nodule
                          , close_nodule: Nodule
@@ -317,7 +303,7 @@ def process_alt_sequence(*
     #     3) Process token path contained in alt using SPSH and SPOP.
     for alt in alt_sequence:
         # Unpack alt into components.
-        token_path: TokenPath = alt.items
+        procedure_path: ProcedurePath = alt.items
         slot_filter: sf.SlotFilter = alt.slot_filter
 
         # Generate stack operations
@@ -329,7 +315,7 @@ def process_alt_sequence(*
         process_token_path(edge_id_gen=edge_id_gen,
                            nodule_gen=nodule_gen,
                            tok_id_gen=tok_id_gen,
-                           token_path=token_path,
+                           procedure_path=procedure_path,
                            start_nodule=start_nodule,
                            close_nodule=close_nodule,
                            mut_nodule_out_edge_map=mut_nodule_out_edge_map,
@@ -342,10 +328,10 @@ DEFAULT_UNIQUE_ID_GEN = uuid.uuid4
 
 
 def process(*
-            , token_path: TokenPath
-            , nodule_gen: UniqueIdGen=None
-            , edge_id_gen: UniqueIdGen=None
-            , tok_id_gen: UniqueIdGen=None
+            , procedure_path: ProcedurePath
+            , nodule_gen: ctpc.UniqueIdGen=None
+            , edge_id_gen: ctpc.UniqueIdGen=None
+            , tok_id_gen: ctpc.UniqueIdGen=None
             ) -> typ.Tuple[NoduleOutEdgeMap, EdgeLookupMap, Nodule, Nodule]:
     if nodule_gen is None:
         logger.info('Nodule generator not specified, using default generator')
@@ -371,12 +357,12 @@ def process(*
     # slot_filter_stack_push = StackOperation(direction=StackDirection.PUSH, slot_filter=sf.ALLOW_ALL)
     # slot_filter_stack_pop = StackOperation(direction=StackDirection.POP, slot_filter=sf.ALLOW_ALL)
 
-    logger.debug(f'Starting processing of main token path, with {len(token_path)} element(s)')
+    logger.debug(f'Starting processing of main procedure path, with {len(procedure_path)} element(s)')
 
     process_token_path(edge_id_gen=edge_id_gen,
                        nodule_gen=nodule_gen,
                        tok_id_gen=tok_id_gen,
-                       token_path=token_path,
+                       procedure_path=procedure_path,
                        start_nodule=start_nodule,
                        close_nodule=close_nodule,
                        mut_nodule_out_edge_map=mut_nodule_out_edge_map,
@@ -385,7 +371,7 @@ def process(*
                        close_slot_filter_stack_command=None,
                        )
 
-    logger.debug(f'Finished processing of token path')
+    logger.debug(f'Finished processing of procedure path')
 
     return mut_nodule_out_edge_map, mut_edge_lookup_map, start_nodule, close_nodule
 
@@ -610,7 +596,7 @@ def yield_tokens_from_graph_walk(*
                                  , nodule_out_edge_map: NoduleOutEdgeMap
                                  , edge_lookup_map: EdgeLookupMap
                                  , graph_walk: GraphWalk
-                                 ) -> typ.Iterable[Token]:
+                                 ) -> typ.Iterable[ctpt.Token]:
     curr_nodule = graph_walk.start
     graph_hop_seq = graph_walk.hop_seq
 

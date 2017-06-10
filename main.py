@@ -9,6 +9,8 @@ import cheffu.parallel as par
 import cheffu.slot_filter as sf
 import cheffu.graphviz as gv
 import cheffu.logging as clog
+import cheffu.types.common as ctpc
+import cheffu.types.tokens as ctpt
 
 logger = clog.get_logger(__name__)
 
@@ -26,11 +28,11 @@ sample_slot_filters = {
 }
 
 
-def token(x: str) -> par.Token:
-    return par.Token(id=par.DEFAULT_UNIQUE_ID_GEN(), data=x)
+def token(x: str) -> ctpt.Token:
+    return ctpt.Token(id=par.DEFAULT_UNIQUE_ID_GEN(), type_def=None, data=x)
 
 
-token_paths: typ.Mapping[str, par.TokenPath] = {
+token_paths: typ.Mapping[str, par.ProcedurePath] = {
     'empty': (),
     'sequence': (
         token('A'),
@@ -384,7 +386,7 @@ token_paths: typ.Mapping[str, par.TokenPath] = {
 def do_stuff():
     for token_path_key, token_path in token_paths.items():
         logger.info(f"Starting processing for token path '{token_path_key}'")
-        nodule_out_edge_map, edge_lookup_map, start_nodule, close_nodule = par.process(token_path=token_path)
+        nodule_out_edge_map, edge_lookup_map, start_nodule, close_nodule = par.process(procedure_path=token_path)
 
         gv_graph = gv.make_graph(nodule_out_edge_map=nodule_out_edge_map, edge_lookup_map=edge_lookup_map)
 
@@ -403,3 +405,4 @@ import cheffu.parallel
 import cheffu.slot_filter
 import cheffu.interfaces as chi
 import cheffu.sample_recipes as samples
+import cheffu.defs

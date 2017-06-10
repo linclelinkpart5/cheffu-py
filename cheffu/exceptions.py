@@ -15,7 +15,7 @@ class InvalidSlotFilterPath(CheffuBaseException):
 
 
 class SlotFilterStackException(CheffuBaseException):
-    """Base class for all exception raised from slot filter stack manipulation."""
+    """Base class for all exceptions raised from slot filter stack manipulation."""
 
 
 class SlotFilterStackEmpty(SlotFilterStackException):

@@ -67,18 +67,18 @@ class TestParallel(unittest.TestCase):
     #     '!0,1,2': sf.make_black_list(0, 1, 2),
     # }
 
-    # VALID_TOKEN_PATH_MAP: typ.Mapping[str, par.TokenPath] = {
+    # VALID_TOKEN_PATH_MAP: typ.Mapping[str, par.ProcedurePath] = {
     #     'empty': (),
     #     'sequence': (
-    #         par.Token('A'),
-    #         par.Token('B'),
-    #         par.Token('C'),
-    #         par.Token('D'),
-    #         par.Token('E'),
+    #         par.TokenSpec('A'),
+    #         par.TokenSpec('B'),
+    #         par.TokenSpec('C'),
+    #         par.TokenSpec('D'),
+    #         par.TokenSpec('E'),
     #     ),
     #     'simple_ub_split': (
-    #         par.Token('A'),
-    #         par.Token('B'),
+    #         par.TokenSpec('A'),
+    #         par.TokenSpec('B'),
     #         (
     #             par.FilteredAlt(
     #                 items=('C', 'D',),
@@ -95,11 +95,11 @@ class TestParallel(unittest.TestCase):
     #                 items=('E~', 'F~',),
     #             ),
     #         ),
-    #         par.Token('G'),
+    #         par.TokenSpec('G'),
     #     ),
     #     'kitchen_sink': (
-    #         par.Token('A'),
-    #         par.Token('B'),
+    #         par.TokenSpec('A'),
+    #         par.TokenSpec('B'),
     #         (
     #             par.FilteredAlt(
     #                 items=('C', 'D',),
@@ -108,7 +108,7 @@ class TestParallel(unittest.TestCase):
     #                 items=('C~', 'D~',),
     #             ),
     #         ),
-    #         par.Token('E'),
+    #         par.TokenSpec('E'),
     #         (
     #             par.FilteredAlt(
     #                 items=('F', 'G',),
@@ -123,14 +123,14 @@ class TestParallel(unittest.TestCase):
     #                 slot_filter=VALID_SLOT_FILTER_MAP['0,1'],
     #             ),
     #         ),
-    #         par.Token('H'),
+    #         par.TokenSpec('H'),
     #         (
     #             par.FilteredAlt(
     #                 items=('I',),
     #             ),
     #             par.FilteredAlt(),
     #         ),
-    #         par.Token('J'),
+    #         par.TokenSpec('J'),
     #         (
     #             par.FilteredAlt(
     #                 items=('K',),
@@ -144,14 +144,14 @@ class TestParallel(unittest.TestCase):
     #                 slot_filter=VALID_SLOT_FILTER_MAP['2'],
     #             ),
     #         ),
-    #         par.Token('L'),
+    #         par.TokenSpec('L'),
     #         (
     #             par.FilteredAlt(
     #                 items=('M', 'N', 'NN', 'NNN',),
     #                 slot_filter=VALID_SLOT_FILTER_MAP['0'],
     #             ),
     #         ),
-    #         par.Token('O'),
+    #         par.TokenSpec('O'),
     #         (
     #             par.FilteredAlt(
     #                 items=(
@@ -165,7 +165,7 @@ class TestParallel(unittest.TestCase):
     #                             slot_filter=VALID_SLOT_FILTER_MAP['1'],
     #                         ),
     #                     ),
-    #                     par.Token('R'),
+    #                     par.TokenSpec('R'),
     #                     (
     #                         par.FilteredAlt(
     #                             items=('S',),
@@ -187,7 +187,7 @@ class TestParallel(unittest.TestCase):
     #                             slot_filter=VALID_SLOT_FILTER_MAP['1'],
     #                         ),
     #                     ),
-    #                     par.Token('R~'),
+    #                     par.TokenSpec('R~'),
     #                     (
     #                         par.FilteredAlt(
     #                             items=('S~',),
@@ -201,7 +201,7 @@ class TestParallel(unittest.TestCase):
     #                 slot_filter=VALID_SLOT_FILTER_MAP['2'],
     #             ),
     #         ),
-    #         par.Token('T'),
+    #         par.TokenSpec('T'),
     #         (
     #             par.FilteredAlt(
     #                 items=('U',),
@@ -214,160 +214,160 @@ class TestParallel(unittest.TestCase):
     #                 slot_filter=VALID_SLOT_FILTER_MAP['2'],
     #             ),
     #         ),
-    #         par.Token('W'),
+    #         par.TokenSpec('W'),
     #     ),
     #     'symmetric_depth_2': (
-    #         par.Token('A'),
+    #         par.TokenSpec('A'),
     #         (
     #             par.FilteredAlt(
     #                 items=(
-    #                     par.Token('B'),
+    #                     par.TokenSpec('B'),
     #                     (
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('D'),
+    #                                 par.TokenSpec('D'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['0'],
     #                         ),
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('E'),
+    #                                 par.TokenSpec('E'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['!0'],
     #                         ),
     #                     ),
-    #                     par.Token('H'),
+    #                     par.TokenSpec('H'),
     #                     (
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('J'),
+    #                                 par.TokenSpec('J'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['0'],
     #                         ),
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('K'),
+    #                                 par.TokenSpec('K'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['!0'],
     #                         ),
     #                     ),
-    #                     par.Token('N'),
+    #                     par.TokenSpec('N'),
     #                 ),
     #                 slot_filter=VALID_SLOT_FILTER_MAP['0'],
     #             ),
     #             par.FilteredAlt(
     #                 items=(
-    #                     par.Token('C'),
+    #                     par.TokenSpec('C'),
     #                     (
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('F'),
+    #                                 par.TokenSpec('F'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['0'],
     #                         ),
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('G'),
+    #                                 par.TokenSpec('G'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['!0'],
     #                         ),
     #                     ),
-    #                     par.Token('I'),
+    #                     par.TokenSpec('I'),
     #                     (
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('L'),
+    #                                 par.TokenSpec('L'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['0'],
     #                         ),
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('M'),
+    #                                 par.TokenSpec('M'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['!0'],
     #                         ),
     #                     ),
-    #                     par.Token('O'),
+    #                     par.TokenSpec('O'),
     #                 ),
     #                 slot_filter=VALID_SLOT_FILTER_MAP['!0'],
     #             ),
     #         ),
-    #         par.Token('P'),
+    #         par.TokenSpec('P'),
     #         (
     #             par.FilteredAlt(
     #                 items=(
-    #                     par.Token('Q'),
+    #                     par.TokenSpec('Q'),
     #                     (
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('S'),
+    #                                 par.TokenSpec('S'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['0'],
     #                         ),
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('T'),
+    #                                 par.TokenSpec('T'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['!0'],
     #                         ),
     #                     ),
-    #                     par.Token('W'),
+    #                     par.TokenSpec('W'),
     #                     (
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('Y'),
+    #                                 par.TokenSpec('Y'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['0'],
     #                         ),
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('Z'),
+    #                                 par.TokenSpec('Z'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['!0'],
     #                         ),
     #                     ),
-    #                     par.Token('2'),
+    #                     par.TokenSpec('2'),
     #                 ),
     #                 slot_filter=VALID_SLOT_FILTER_MAP['0'],
     #             ),
     #             par.FilteredAlt(
     #                 items=(
-    #                     par.Token('R'),
+    #                     par.TokenSpec('R'),
     #                     (
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('U'),
+    #                                 par.TokenSpec('U'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['0'],
     #                         ),
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('V'),
+    #                                 par.TokenSpec('V'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['!0'],
     #                         ),
     #                     ),
-    #                     par.Token('X'),
+    #                     par.TokenSpec('X'),
     #                     (
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('0'),
+    #                                 par.TokenSpec('0'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['0'],
     #                         ),
     #                         par.FilteredAlt(
     #                             items=(
-    #                                 par.Token('1'),
+    #                                 par.TokenSpec('1'),
     #                             ),
     #                             slot_filter=VALID_SLOT_FILTER_MAP['!0'],
     #                         ),
     #                     ),
-    #                     par.Token('3'),
+    #                     par.TokenSpec('3'),
     #                 ),
     #                 slot_filter=VALID_SLOT_FILTER_MAP['!0'],
     #             ),
     #         ),
-    #         par.Token('4'),
+    #         par.TokenSpec('4'),
     #     ),
     #     'singleton_ub_split': (
     #         (

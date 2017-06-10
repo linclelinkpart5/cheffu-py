@@ -4,122 +4,275 @@
   pipelines:
     - inputs: []
       outputs: [Ingredient]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Taggable
+    - Concrete
+    - Foodstuff
+    - Placable
+    - Measurable
 - name: Tool
   key: TOOL
   argument: CheffuString
   pipelines:
     - inputs: []
       outputs: [Tool]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Taggable
+    - Concrete
+    - Equipment
+    - Implement
+    - Placable
 - name: Container
   key: CONT
   argument: CheffuString
   pipelines:
     - inputs: []
       outputs: [Container]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Taggable
+    - Concrete
+    - Equipment
+    - Vessel
+    - Placable
 - name: Appliance
   key: APPL
   argument: CheffuString
   pipelines:
     - inputs: []
       outputs: [Appliance]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Taggable
+    - Concrete
+    - Equipment
+    - Vessel
+    - Implement
+    - Placable
 - name: Environment
   key: ENVR
   argument: CheffuString
   pipelines:
     - inputs: []
       outputs: [Environment]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Taggable
+    - Concrete
+    - Equipment
+    - Configurable
 - name: Verb
   key: VERB
   argument: CheffuString
   pipelines:
-    - inputs: [Has(Mixture)]
-      outputs: [Has(Mixture)]
+    - inputs: [Foodstuff]
+      outputs: [Mixture]
+    - inputs: [System]
+      outputs: [System]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Action
 - name: Add
   key: ADDI
   argument: CheffuString
   pipelines:
-    - inputs: [Has(Container), Has(Mixture)]
-      outputs: [Has(Container, Mixture)]
-    - inputs: [Has(Mixture), Has(Mixture)]
-      outputs: [Has(Mixture)]
+    - inputs: [Vessel, Foodstuff]
+      outputs: [System]
+    - inputs: [Foodstuff, Foodstuff]
+      outputs: [Mixture]
+    - inputs: [System, Foodstuff]
+      outputs: [System]
+    - inputs: [Vessel, System]
+      outputs: [System]
+    - inputs: [Foodstuff, System]
+      outputs: [Mixture]
+    - inputs: [System, System]
+      outputs: [System]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Action
 - name: AddTo
   key: ADDT
   argument: CheffuString
   pipelines:
-    - inputs: [Has(Mixture), Has(Container)]
-      outputs: [Has(Container, Mixture)]
-    - inputs: [Has(Mixture), Has(Mixture)]
-      outputs: [Has(Mixture)]
+    - inputs: [Foodstuff, Vessel]
+      outputs: [System]
+    - inputs: [Foodstuff, Foodstuff]
+      outputs: [Mixture]
+    - inputs: [Foodstuff, System]
+      outputs: [System]
+    - inputs: [System, Vessel]
+      outputs: [System]
+    - inputs: [System, Foodstuff]
+      outputs: [Mixture]
+    - inputs: [System, System]
+      outputs: [System]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Action
 - name: Move
   key: MOVE
   argument: CheffuString
   pipelines:
-    - inputs: [Has(Container, Mixture), Has(Mixture)]
-      outputs: [Has(Container), Has(Mixture)]
-    - inputs: [Has(Container, Mixture), Has(Container)]
-      outputs: [Has(Container), Has(Container, Mixture)]
+    - inputs: [System, Foodstuff]
+      outputs: [Vessel, Mixture]
+    - inputs: [System, Vessel]
+      outputs: [Vessel, System]
+    - inputs: [System, System]
+      outputs: [Vessel, System]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Action
 - name: MoveFrom
   key: MOVF
   argument: CheffuString
   pipelines:
-    - inputs: [Has(Mixture), Has(Container, Mixture)]
-      outputs: [Has(Mixture), Has(Container)]
-    - inputs: [Has(Container), Has(Container, Mixture)]
-      outputs: [Has(Container, Mixture), Has(Container)]
+    - inputs: [Foodstuff, System]
+      outputs: [Mixture, Vessel]
+    - inputs: [Vessel, System]
+      outputs: [System, Vessel]
+    - inputs: [System, System]
+      outputs: [System, Vessel]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Action
 - name: Divide
   key: DIVI
   argument: ~
   pipelines:
-    - inputs: [Has(Mixture)]
-      outputs: [Has(Mixture), Mixture]
+    - inputs: [Foodstuff]
+      outputs: [Mixture, Mixture]
+    - inputs: [System]
+      outputs: [System, Mixture]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Action
+    - Divisor
 - name: Reserve
   key: RESV
   argument: ~
   pipelines:
-    - inputs: [Has(Mixture)]
-      outputs: [Has(Mixture), Mixture]
+    - inputs: [Foodstuff]
+      outputs: [Mixture, Mixture]
+    - inputs: [System]
+      outputs: [System, Mixture]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Action
+    - Divisor
 - name: Configure
   key: CONF
   argument: CheffuString
   pipelines:
-    - inputs: [Has(Appliance)]
-      outputs: [Has(Appliance)]
+    - inputs: [Configurable]
+      outputs: [Configurable]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Action
 - name: Meld
   key: MELD
   argument: CheffuString
   pipelines:
-    - inputs: [Has(Container), Tool]
-      outputs: [Has(Container)]
+    - inputs: [Vessel, Tool]
+      outputs: [Vessel]
+    - inputs: [System, Tool]
+      outputs: [System]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Action
 - name: Place
   key: PLAC
   argument: ~
   pipelines:
-    - inputs: [Has(Environment), Has(Placable)]
-      outputs: [Has(Environment, Placable)]
+    - inputs: [Environment, Placable]
+      outputs: [Process]
+#    DISABLED: Not able to support multiple Placables in a single Environment; no way to indicate which one to Remove.
+#    - inputs: [Process, Placable]
+#      outputs: [Process]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Action
 - name: Remove
   key: REMO
   argument: ~
   pipelines:
-    - inputs: [Has(Environment, Placable)]
-      outputs: [Has(Placable)]
-- name: Bind
-  key: BIND
+    - inputs: [Process]
+      outputs: [Placable]
+  interfaces:
+    - Modifiable
+    - Annotatable
+    - Photoable
+    - Action
+# DEPRECATED: Use Using and With instead.
+# - name: Bind
+#   key: BIND
+#   argument: ~
+- name: With
+  key: WITH
   argument: ~
   pipelines:
-    - inputs: [Has(Mixture), Tool]
-      outputs: [Has(Mixture)]
+    - inputs: [Action, Tool]
+      outputs: [Action]
+  interfaces:
+    - Annotatable
+    - Photoable
+    - Combiner
+- name: Using
+  key: USIN
+  argument: CheffuString
+  pipelines:
+    - inputs: [Action]
+      outputs: [Action]
+  interfaces:
+    - Annotatable
+    - Photoable
+    - Combiner
 - name: Discard
   key: DISC
   argument: ~
   pipelines:
-    - inputs: [Has(Mixture)]
+    - inputs: [Mixture]
+      outputs: []
+    - inputs: [System]
       outputs: []
 - name: Empty
   key: EMPT
   argument: ~
   pipelines:
-    - inputs: [Has(Container, Mixture)]
-      outputs: [Has(Container)]
+    - inputs: [System]
+      outputs: [Vessel]
 - name: Simultaneous
   key: SIMU
   argument: ~
@@ -135,7 +288,7 @@
 - name: LookupGet
   key: LGET
   argument: CheffuString
-  # Shifts stack contents around
+  # TODO: What should the inputs and outputs be?
   pipelines:
     - inputs: ~
       outputs: ~
@@ -145,6 +298,8 @@
   pipelines:
     - inputs: [Environment]
       outputs: [Environment]
+    - inputs: [Appliance]
+      outputs: [Appliance]
 - name: Modifier
   key: MODI
   argument: CheffuString
@@ -205,27 +360,3 @@
   pipelines:
     - inputs: [Timable]
       outputs: [Timable]
-- name: Group
-  key: GRUP
-  argument: CheffuTokenSequence
-  pipelines:
-    - inputs: []
-      outputs: [Group]
-- name: VariantTag
-  key: VTAG
-  argument: CheffuSlotSet
-  pipelines:
-    - inputs: [Group]
-      outputs: [Group]
-- name: VariantOr
-  key: VORR
-  argument: ~
-  pipelines:
-    - inputs: [Alternatable, Alternatable]
-      outputs: [Alternatable]
-- name: Repeat
-  key: REPT
-  argument: CheffuPosInteger
-  pipelines:
-    - inputs: [Group]
-      outputs: [Group]

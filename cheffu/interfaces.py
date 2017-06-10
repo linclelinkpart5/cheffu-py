@@ -1,137 +1,410 @@
-import collections
-import types
-import enum
 import typing as typ
-import collections.abc as abc
 
 import modgrammar as mg
-import voluptuous as vp
-import voluptuous.humanize as vph
+import types
+import abc
 
-import cheffu.grammars as cgrm
 import cheffu.argument_schema as asc
-import cheffu.parallel as par
+import cheffu.grammars as cgrm
 
 
-class Priority(enum.Enum):
-    GRAPH_GEN = 0
-    STACK_GEN = 1
+# class Priority(enum.Enum):
+#     GRAPH_GEN = 0
+#     STACK_GEN = 1
+
+TokenSpecSequence = typ.Sequence['TokenSpec']
+
+# Would ideally be Callable[[TokenSpec, ...], TokenSpec], but not legal.
+PipelineMethod = typ.Callable[..., 'TokenSpec']
 
 
 class Pipeline(typ.NamedTuple):
-    inputs: typ.Sequence[typ.Type['Token']] = ()
-    outputs: typ.Sequence[typ.Type['Token']] = ()
+    input_types: TokenSpecSequence
+    output_types: TokenSpecSequence
+    # method: PipelineMethod
+
+PipelineSequence = typ.Sequence[Pipeline]
 
 
-class Token:
-    keyword: str = None
-    arg_grammar: mg.Grammar = None
-    arg_vp_schema: vp.Schema = None
-    sigil: typ.Optional[str] = None
-    priority: Priority = Priority.STACK_GEN
-    pipelines: typ.Sequence[Pipeline] = ()
+def reverse_input_order(pipeline_sequence: PipelineSequence):
+    def helper():
+        for pipeline in pipeline_sequence:
+            yield pipeline._replace(input_types=tuple(reversed(pipeline.input_types)))
 
-    def __init__(self):
-        self.data = None
+    return tuple(helper())
 
-    @classmethod
-    def get_definable_tokens(cls: typ.Type):
-        unique_seen = set()
 
-        def spelunk(c):
-            for subclass in c.__subclasses__():
-                yield from spelunk(subclass)
-                if subclass.keyword:
-                    if subclass not in unique_seen:
-                        yield subclass
-                        unique_seen.add(subclass)
+class SelfRef:
+    """Sentinel class for use in pipeline definitions, for cases when a class outputs itself."""
+    pass
 
-        yield from spelunk(cls)
 
-    # def process_stack(self, stack: typ.List['Token']):
-    #     raise NotImplemented()
+class Ref(typ.NamedTuple):
+    """Sentinel for use in pipeline definitions. This allows for listing classes that have not yet been defined."""
+    target: str
+
+
+class TokenSpec(metaclass=abc.ABCMeta):
+    """Base token spec/interface."""
+    pass
+    # keyword: ctpt.TokenKeyword = None
+    # arg_grammar: mg.Grammar = None
+    # pipelines: PipelineSequence = ()
+    # consolidate: bool = False
     #
-    # def process_graph(self, nodule_edge_map: par.NoduleEdgeMap, current_nodule: par.Nodule):
-    #     raise NotImplemented()
+    # @classmethod
+    # def yield_defined_token_specs(cls: typ.Type):
+    #     """Yields all subclasses of this class (excluding itself) that are defined. Classes that have a non-null
+    #     keyword are considered 'defined'.
+    #     """
+    #     unique_seen = set()
+    #
+    #     def spelunk(c):
+    #         for subclass in c.__subclasses__():
+    #             yield from spelunk(subclass)
+    #             if subclass.keyword is not None:
+    #                 if subclass not in unique_seen:
+    #                     yield subclass
+    #                     unique_seen.add(subclass)
+    #
+    #     yield from spelunk(cls)
+    #
+    # @classmethod
+    # def parse_arg(cls, *, arg_str: str) -> ctpt.TokenData:
+    #     parser = cls.arg_grammar.parser()
+    #     result = parser.parse_string(arg_str)
+    #     result_val = result.value()
+    #     return result_val
 
 
-class Modifiable(Token,):
-    def __init__(self):
-        super().__init__()
-        self._modis = collections.OrderedDict()
-
-    def add_modifier(self, modi):
-        self._modis[modi] = None
-
-    def get_modifiers(self):
-        return tuple(self._modis.keys())
+class Modifiable(TokenSpec):
+    """Able to have modifiers attached."""
+    pass
 
 
-class Annotatable(Token,):
-    def __init__(self):
-        super().__init__()
-        self._annos = collections.OrderedDict()
-
-    def add_annotation(self, anno):
-        self._annos[anno] = None
-
-    def get_annotations(self):
-        return tuple(self._annos.keys())
+class Annotatable(TokenSpec):
+    """Able to have annotations attached."""
+    pass
 
 
-class Photoable(Token,):
-    def __init__(self):
-        super().__init__()
-        self._photos = collections.OrderedDict()
-
-    def add_photo(self, photo):
-        self._photos[photo] = None
-
-    def get_photos(self):
-        return tuple(self._photos.keys())
+class Photoable(TokenSpec):
+    """Able to have photos attached."""
+    pass
 
 
-class Taggable(Token,):
-    def __init__(self):
-        super().__init__()
-        self._tags = collections.OrderedDict()
-
-    def add_tag(self, tag):
-        self._tags[tag] = None
-
-    def get_tags(self):
-        return tuple(self._tags.keys())
+class Taggable(TokenSpec):
+    """Able to have lookup tags assigned."""
+    pass
 
 
-# TODO: Not all Concretes should be Modifiable/Annotatable (e.g. Systems)
-class Concrete(Modifiable, Annotatable, Photoable, Taggable,):
-    def __init__(self):
-        super().__init__()
+class Concrete(Photoable, Taggable):
+    pass
 
 
-class Placable(Concrete,):
-    def __init__(self):
-        super().__init__()
+class Placable(Concrete):
+    pass
 
 
-class Foodstuff(Concrete,):
-    def __init__(self):
-        super().__init__()
+class Configurable(Concrete):
+    pass
 
 
-class Equipment(Concrete,):
-    def __init__(self):
-        super().__init__()
+class Foodstuff(Concrete):
+    pass
 
 
-class Container(Equipment,):
-    def __init__(self):
-        super().__init__()
+class System(Concrete):
+    pass
 
 
-class Implement(Equipment,):
-    def __init__(self):
-        super().__init__()
+class Mixture(Foodstuff):
+    pass
+
+
+class Equipment(Concrete):
+    pass
+
+
+class Vessel(Equipment):
+    pass
+
+
+class Implement(Equipment):
+    pass
+
+
+class Action(Photoable):
+    pass
+
+
+class Meta(TokenSpec):
+    pass
+
+
+class Partition(Meta):
+    pass
+
+
+class Measurement(Meta):
+    pass
+
+
+class Quantity(Partition, Measurement):
+    pass
+
+
+class Partitionable(TokenSpec):
+    pass
+
+
+class Measurable(TokenSpec):
+    pass
+
+
+class Passthru(TokenSpec):
+    pass
+
+
+class ControlFlow(TokenSpec):
+    pass
+
+
+class Ingredient(Modifiable, Annotatable, Foodstuff, Placable, Measurable):
+    keyword = 'INGR'
+    arg_grammar = cgrm.Phrase
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+    pipelines = (
+        Pipeline(input_types=(), output_types=(SelfRef,)),
+    )
+
+
+class Tool(Modifiable, Annotatable, Implement, Placable):
+    keyword = 'TOOL'
+    arg_grammar = cgrm.Phrase
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+    pipelines = (
+        Pipeline(input_types=(), output_types=(SelfRef,)),
+    )
+
+
+class Container(Modifiable, Annotatable, Vessel, Placable):
+    keyword = 'CONT'
+    arg_grammar = cgrm.Phrase
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+    pipelines = (
+        Pipeline(input_types=(), output_types=(SelfRef,)),
+    )
+
+
+class Appliance(Modifiable, Annotatable, Vessel, Implement, Placable, Configurable):
+    keyword = 'APPL'
+    arg_grammar = cgrm.Phrase
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+    pipelines = (
+        Pipeline(input_types=(), output_types=(SelfRef,)),
+    )
+
+
+class Environment(Modifiable, Annotatable, Equipment, Configurable):
+    keyword = 'ENVR'
+    arg_grammar = cgrm.Phrase
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+    pipelines = (
+        Pipeline(input_types=(), output_types=(SelfRef,)),
+    )
+
+
+class Verb(Action, Modifiable, Annotatable):
+    keyword = 'VERB'
+    arg_grammar = cgrm.Phrase
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+    pipelines = (
+        Pipeline(input_types=(Foodstuff,), output_types=(Mixture,)),
+        Pipeline(input_types=(System,), output_types=(System,)),
+    )
+
+
+class Add(Action, Modifiable, Annotatable):
+    keyword = 'ADDI'
+    arg_grammar = cgrm.Phrase
+    arg_vp_schema = asc.ArgumentSchemas.STRING_OR_NONE
+    pipelines = (
+        Pipeline(input_types=(Vessel, Foodstuff), output_types=(System,)),
+        Pipeline(input_types=(Foodstuff, Foodstuff), output_types=(Mixture,)),
+        Pipeline(input_types=(System, Foodstuff), output_types=(System,)),
+        Pipeline(input_types=(Vessel, System), output_types=(System,)),
+        Pipeline(input_types=(Foodstuff, System), output_types=(Mixture,)),
+        Pipeline(input_types=(System, System), output_types=(System,)),
+    )
+
+
+class AddTo(Add):
+    keyword = 'ADDT'
+    pipelines = reverse_input_order(Add.pipelines)
+
+
+class Move(Action, Modifiable, Annotatable):
+    keyword = 'MOVE'
+    arg_grammar = cgrm.Phrase
+    arg_vp_schema = asc.ArgumentSchemas.STRING_OR_NONE
+    pipelines = (
+        Pipeline(input_types=(System, Vessel), output_types=(Vessel, System,)),
+        Pipeline(input_types=(System, Foodstuff), output_types=(Vessel, Mixture,)),
+        Pipeline(input_types=(System, System), output_types=(Vessel, System,)),
+    )
+
+
+class MoveFrom(Move):
+    keyword = 'MOVF'
+    pipelines = reverse_input_order(Move.pipelines)
+
+
+class Divide(Action, Annotatable, Partitionable):
+    keyword = 'DIVI'
+    arg_grammar = None
+    arg_vp_schema = asc.ArgumentSchemas.NONE
+    pipelines = (
+        Pipeline(input_types=(Foodstuff,), output_types=(Mixture, Mixture,)),
+        Pipeline(input_types=(System,), output_types=(System, Mixture,)),
+    )
+
+
+class Reserve(Action, Annotatable, Partitionable):
+    keyword = 'RESV'
+    arg_grammar = None
+    arg_vp_schema = asc.ArgumentSchemas.NONE
+
+
+class Configure(Action, Modifiable, Annotatable):
+    keyword = 'CONF'
+    arg_grammar = cgrm.Phrase
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+
+
+class Meld(Action, Modifiable, Annotatable):
+    keyword = 'MELD'
+    arg_grammar = cgrm.Phrase
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+
+
+class Place(Action, Modifiable, Annotatable):
+    keyword = 'PLAC'
+    arg_grammar = None
+    arg_vp_schema = asc.ArgumentSchemas.NONE
+
+
+class Remove(Action, Modifiable, Annotatable):
+    keyword = 'REMO'
+    arg_grammar = None
+    arg_vp_schema = asc.ArgumentSchemas.NONE
+
+
+class Discard(Action, Photoable):
+    keyword = 'DISC'
+    arg_grammar = None
+    arg_vp_schema = asc.ArgumentSchemas.NONE
+
+
+class Empty(Action, Photoable):
+    keyword = 'EMPT'
+    arg_grammar = None
+    arg_vp_schema = asc.ArgumentSchemas.NONE
+
+
+class Simultaneous(Action, Passthru):
+    keyword = 'SIMU'
+    arg_grammar = cgrm.Phrase
+    arg_vp_schema = asc.ArgumentSchemas.NONE
+
+
+class With(Meta, Passthru):
+    keyword = 'WITH'
+    arg_grammar = None
+    arg_vp_schema = asc.ArgumentSchemas.NONE
+
+
+class Using(Meta, Passthru):
+    keyword = 'USIN'
+    arg_grammar = cgrm.String
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+
+
+class Precondition(Meta):
+    keyword = 'PREC'
+    arg_grammar = cgrm.Phrase
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+
+
+class Modifier(Meta):
+    keyword = 'MODI'
+    arg_grammar = cgrm.String
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+
+
+class Annotation(Meta):
+    keyword = 'ANNO'
+    arg_grammar = cgrm.String
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+
+
+class Photo(Meta):
+    keyword = 'PHOT'
+    arg_grammar = cgrm.String
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+
+
+class LookupSet(Meta):
+    keyword = 'LSET'
+    arg_grammar = cgrm.String
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+
+
+class LookupGet(ControlFlow):
+    keyword = 'LGET'
+    arg_grammar = cgrm.String
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+
+
+class Fraction(Partition):
+    keyword = 'FRAC'
+    arg_grammar = cgrm.Partition
+    arg_vp_schema = asc.ArgumentSchemas.FRACTION
+
+
+class Pseudoselect(Partition):
+    keyword = 'PSEU'
+    arg_grammar = cgrm.Phrase
+    arg_vp_schema = asc.ArgumentSchemas.STRING
+
+
+class QuantityMass(Quantity):
+    keyword = 'QMAS'
+    arg_grammar = cgrm.Quantity
+    arg_vp_schema = asc.ArgumentSchemas.QUANTITY_MASS
+
+
+class QuantityVolume(Quantity):
+    keyword = 'QVOL'
+    arg_grammar = cgrm.Quantity
+    arg_vp_schema = asc.ArgumentSchemas.QUANTITY_VOLUME
+
+
+class QuantityCount(Quantity):
+    keyword = 'QCNT'
+    arg_grammar = cgrm.Quantity
+    arg_vp_schema = asc.ArgumentSchemas.QUANTITY_COUNT
+
+
+class Time(Meta):
+    keyword = 'TIME'
+    arg_grammar = cgrm.Quantity
+    arg_vp_schema = asc.ArgumentSchemas.QUANTITY_TIME
+
+
+class Until(Meta):
+    keyword = 'UNTL'
+    arg_grammar = cgrm.String
+    arg_vp_schema = asc.ArgumentSchemas.STRING
 
 
 def Haz():
@@ -152,426 +425,3 @@ def Haz():
     return lambda cls: create_or_get_entry(cls)
 
 Haz = Haz()
-
-
-class Action(Token,):
-    def __init__(self):
-        super().__init__()
-
-
-class Meta(Token,):
-    def __init__(self):
-        super().__init__()
-
-
-class Partition(Meta,):
-    def __init__(self):
-        super().__init__()
-
-
-class Measurement(Meta,):
-    def __init__(self):
-        super().__init__()
-
-
-class Quantity(Partition, Measurement,):
-    def __init__(self):
-        super().__init__()
-
-
-class Partitionable(Token,):
-    def __init__(self):
-        super().__init__()
-
-
-class Measurable(Token,):
-    def __init__(self):
-        super().__init__()
-
-
-class Passthru(Token,):
-    def __init__(self):
-        super().__init__()
-
-
-class ControlFlow(Token,):
-    def __init__(self):
-        super().__init__()
-
-# Tokens ###############################################################################################################
-
-
-class Ingredient(Foodstuff, Measurable, Placable,):
-    keyword = 'INGR'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class Tool(Equipment, Placable,):
-    keyword = 'TOOL'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class Vessel(Container, Placable,):
-    keyword = 'VESS'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class Appliance(Container, Placable,):
-    keyword = 'APPL'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class Environment(Equipment,):
-    keyword = 'ENVR'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class Verb(Action, Modifiable, Annotatable, Photoable,):
-    keyword = 'VERB'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class Add(Action, Modifiable, Annotatable, Photoable,):
-    keyword = 'ADDI'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.STRING_OR_NONE
-
-    def __init__(self):
-        super().__init__()
-
-
-class AddTo(Action, Modifiable, Annotatable, Photoable,):
-    keyword = 'ADDT'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.STRING_OR_NONE
-
-    def __init__(self):
-        super().__init__()
-
-
-class Move(Action, Modifiable, Annotatable, Photoable,):
-    keyword = 'MOVE'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.STRING_OR_NONE
-
-    def __init__(self):
-        super().__init__()
-
-
-class MoveFrom(Action, Modifiable, Annotatable, Photoable,):
-    keyword = 'MOVF'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.STRING_OR_NONE
-
-    def __init__(self):
-        super().__init__()
-
-
-class Divide(Action, Photoable, Annotatable, Partitionable,):
-    keyword = 'DIVI'
-    arg_grammar = None
-    arg_vp_schema = asc.ArgumentSchemas.NONE
-
-    def __init__(self):
-        super().__init__()
-
-
-class Reserve(Action, Photoable, Annotatable, Partitionable,):
-    keyword = 'RESV'
-    arg_grammar = None
-    arg_vp_schema = asc.ArgumentSchemas.NONE
-
-    def __init__(self):
-        super().__init__()
-
-
-class Configure(Action, Modifiable, Annotatable, Photoable,):
-    keyword = 'CONF'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class Meld(Action, Modifiable, Annotatable, Photoable,):
-    keyword = 'MELD'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class Place(Action, Modifiable, Annotatable, Photoable,):
-    keyword = 'PLAC'
-    arg_grammar = None
-    arg_vp_schema = asc.ArgumentSchemas.NONE
-
-    def __init__(self):
-        super().__init__()
-
-
-class Remove(Action, Modifiable, Annotatable, Photoable,):
-    keyword = 'REMO'
-    arg_grammar = None
-    arg_vp_schema = asc.ArgumentSchemas.NONE
-
-    def __init__(self):
-        super().__init__()
-
-
-class Bind(Action, Passthru,):
-    keyword = 'BIND'
-    arg_grammar = None
-    arg_vp_schema = asc.ArgumentSchemas.NONE
-
-    def __init__(self):
-        super().__init__()
-
-
-class Discard(Action, Photoable,):
-    keyword = 'DISC'
-    arg_grammar = None
-    arg_vp_schema = asc.ArgumentSchemas.NONE
-
-    def __init__(self):
-        super().__init__()
-
-
-class Empty(Action, Photoable,):
-    keyword = 'EMPT'
-    arg_grammar = None
-    arg_vp_schema = asc.ArgumentSchemas.NONE
-
-    def __init__(self):
-        super().__init__()
-
-
-class Simultaneous(Action, Passthru,):
-    keyword = 'SIMU'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.NONE
-
-    def __init__(self):
-        super().__init__()
-
-
-class Condition(Meta,):
-    keyword = 'SIMU'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class Modifier(Meta,):
-    keyword = 'MODI'
-    arg_grammar = cgrm.String
-    sigil = ','
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class Annotation(Meta,):
-    keyword = 'ANNO'
-    arg_grammar = cgrm.String
-    sigil = ';'
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class Photo(Meta,):
-    keyword = 'PHOT'
-    arg_grammar = cgrm.String
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class LookupSet(Meta,):
-    keyword = 'LSET'
-    arg_grammar = cgrm.String
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class LookupGet(ControlFlow,):
-    keyword = 'LGET'
-    arg_grammar = cgrm.String
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class Fraction(Partition,):
-    keyword = 'FRAC'
-    arg_grammar = cgrm.Partition
-    arg_vp_schema = asc.ArgumentSchemas.FRACTION
-
-    def __init__(self):
-        super().__init__()
-
-
-class Pseudoselect(Partition,):
-    keyword = 'PSEU'
-    arg_grammar = cgrm.Phrase
-    arg_vp_schema = asc.ArgumentSchemas.STRING
-
-    def __init__(self):
-        super().__init__()
-
-
-class QuantityMass(Quantity,):
-    keyword = 'QMAS'
-    arg_grammar = cgrm.Quantity
-    arg_vp_schema = asc.ArgumentSchemas.QUANTITY_MASS
-
-    def __init__(self):
-        super().__init__()
-
-
-class QuantityVolume(Quantity,):
-    keyword = 'QVOL'
-    arg_grammar = cgrm.Quantity
-    arg_vp_schema = asc.ArgumentSchemas.QUANTITY_VOLUME
-
-    def __init__(self):
-        super().__init__()
-
-
-class QuantityCount(Quantity,):
-    keyword = 'QCNT'
-    arg_grammar = cgrm.Quantity
-    arg_vp_schema = asc.ArgumentSchemas.QUANTITY_COUNT
-
-    def __init__(self):
-        super().__init__()
-
-
-class Time(Meta,):
-    keyword = 'TIME'
-    arg_grammar = cgrm.Quantity
-    arg_vp_schema = asc.ArgumentSchemas.QUANTITY_TIME
-
-    def __init__(self):
-        super().__init__()
-
-
-class VariantTag(Meta,):
-    keyword = 'VTAG'
-    arg_grammar = None
-    arg_vp_schema = asc.ArgumentSchemas.VARIANT_TAG_SET
-
-    def __init__(self):
-        super().__init__()
-
-
-class Group(ControlFlow,):
-    keyword = 'GRUP'
-    arg_grammar = None
-
-    # This method emulates a callable voluptuous Schema.
-    @staticmethod
-    def arg_vp_schema(data):
-        other_schemas = tuple(t.vp_schema for t in Token.get_definable_tokens())
-        schema = vp.Schema([vp.Any(*other_schemas)])
-        return schema(data)
-
-    # arg_vp_schema = __arg_vp_schema
-
-    def __init__(self):
-        super().__init__()
-
-
-class Or(ControlFlow,):
-    keyword = 'OROP'
-    arg_grammar = None
-    arg_vp_schema = asc.ArgumentSchemas.NONE
-
-    def __init__(self):
-        super().__init__()
-
-
-class Repeat(ControlFlow,):
-    # How to handle nested Repeat and Group/VariantTag instances, and vice-versa?
-    keyword = 'REPT'
-    arg_grammar = None
-    arg_vp_schema = asc.ArgumentSchemas.NON_NEG_INT
-
-    def __init__(self):
-        super().__init__()
-
-
-KeywordToType = {
-    t.keyword: t for t in Token.get_definable_tokens()
-}
-
-
-def get_from_td(token_dict: typ.Mapping[str, typ.Any]) -> typ.Tuple[str, typ.Any]:
-    assert isinstance(token_dict, abc.Mapping)
-    assert len(token_dict) == 1
-    found_keyword, found_argument = next(iter(token_dict.items()))
-    return found_keyword, found_argument
-
-
-def process(token_dicts: typ.Sequence[typ.Mapping[str, typ.Any]]):
-    # Process token dicts into token instances
-    token_insts = []
-    for token_dict in token_dicts:
-        # Look up the keyword and argument from the TD
-        keyword, argument = get_from_td(token_dict)
-
-        # Use keyword to look up interface
-        interface: typ.Type[Token] = KeywordToType[keyword]
-
-        # Create an instance of the specified token
-        token_inst = interface()
-
-        # Set argument in token instance
-        token_inst.process_token_argument(argument)
-
-        token_insts.append(token_inst)
-
-    # return token_insts
-
-    # In priority order, process tokens in multiple passes
-    for priority_choice in Priority.__members__.values():
-        new_token_insts = []
-        for token_inst in token_insts:
-            if token_inst.priority == priority_choice:
-                # Process
-                pass
