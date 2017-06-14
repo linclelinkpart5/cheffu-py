@@ -44,11 +44,26 @@ TokenArgConverter = typ.Callable[[TokenArg], TokenData]
 # Token interface, used to determine which interfaces are subclasses of which other interfaces.
 TokenInterface = typ.Type[TokenSpec]
 
+# Token interface, used to determine which interfaces are subclasses of which other interfaces.
+TokenInterfaceSequence = typ.Sequence[TokenInterface]
+
+# Would ideally be Callable[[TokenSpec, ...], TokenSpec], but not legal.
+PipelineMethod = typ.Callable[..., 'TokenSpec']
+
+
+class Pipeline(typ.NamedTuple):
+    input_types: TokenInterfaceSequence
+    output_types: TokenInterfaceSequence
+    # method: PipelineMethod
+
+PipelineSequence = typ.Sequence[Pipeline]
+
 
 class TokenTypeDef(typ.NamedTuple):
     interface: TokenInterface
     keyword: TokenKeyword
     arg_conv: TokenArgConverter
+    pipelines: PipelineSequence
     sigil: TokenKeyword = None
 
     @property
